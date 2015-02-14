@@ -3,9 +3,10 @@
   <groupId>de.uniko.sebschlicht</groupId>
   <artifactId>graphity-neo4j</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <description>Graphity implementation using Neo4j, includes bootstrapper</description>
-  <url>https://github.com/sebschlicht/graphity-neo4j</url>
+  
   <name>Graphity@Neo4j</name>
+  <description>Graphity implementation using Neo4j.</description>
+  <url>https://github.com/sebschlicht/graphity-neo4j</url>
   
   <licenses>
     <license>
