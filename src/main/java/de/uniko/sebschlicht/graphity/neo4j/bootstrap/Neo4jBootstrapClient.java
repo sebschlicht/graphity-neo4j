@@ -3,7 +3,6 @@ package de.uniko.sebschlicht.graphity.neo4j.bootstrap;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.neo4j.unsafe.batchinsert.BatchInserter;
@@ -29,6 +28,21 @@ public class Neo4jBootstrapClient extends BootstrapClient {
         _inserter.shutdown();
     }
 
+    public void bootstrap(long[] userIds, long[] subscriptions, int[] numPosts) {
+        createUsers(userIds);
+        System.out.println(userIds.length + " users created.");
+
+        // subscribe users
+        long numSubscriptions = createSubscriptions(subscriptions);
+        System.out.println(numSubscriptions + " subscriptions registered.");
+
+        // create and link posts
+        long numPostsTotal = createPosts(numPosts);
+        System.out.println(numPostsTotal + " posts created.");
+        linkPosts(numPosts);
+        System.out.println("posts linked.");
+    }
+
     protected void createUsers(long[] userIds) {
         User user;
         Map<String, Object> userProperties;
@@ -40,6 +54,82 @@ public class Neo4jBootstrapClient extends BootstrapClient {
             nodeId = _inserter.createNode(userProperties, NodeType.USER);
             user.setNodeId(nodeId);
         }
+    }
+
+    /**
+     * Links the users in the database.
+     * 
+     * @param subscriptions
+     *            array with following content schema:<br>
+     *            numSubscriptions, idFollowed_0 .. idFollowed_numSubscriptions<br>
+     *            per user, where users are sorted as in userIds
+     * @return number of subscriptions
+     */
+    protected long createSubscriptions(long[] subscriptions) {
+        User user, followed;
+        long numSubscriptions = 0;
+        int iUser = 0;
+        long numUserSubscriptions, idFollowed;
+        for (int iSubscription = 0; iSubscription < subscriptions.length; ++iUser) {// iSubscription is incremented in the loop
+            numUserSubscriptions = subscriptions[iSubscription++];
+            if (numUserSubscriptions == 0) {
+                continue;
+            }
+            user = _users.getUserByIndex(iUser);
+            if (!IS_GRAPHITY) {// WriteOptimizedGraphity
+                for (int i = 0; i < numUserSubscriptions; ++i) {
+                    idFollowed = subscriptions[iSubscription++];
+                    followed = _users.getUser(idFollowed);
+                    _inserter.createRelationship(user.getNodeId(),
+                            followed.getNodeId(), EdgeType.FOLLOWS, null);
+                    numSubscriptions += 1;
+                }
+            } else {// ReadOptimizedGraphity
+                throw new IllegalStateException("can not subscribe");
+            }
+        }
+        return numSubscriptions;
+    }
+
+    /**
+     * Adds the posts to the database.
+     * 
+     * @param numPosts
+     *            number of posts per user, where users are sorted as in userIds
+     * @return number of posts
+     */
+    protected long createPosts(int[] numPosts) {
+        long numTotalPosts = 0;
+        User user;
+        int numUserPosts;
+        Map<String, Object> postProperties;
+        long tsLastPost = System.currentTimeMillis();
+        long nodeId;
+        for (int i = 0; i < numPosts.length; ++i) {
+            user = _users.getUserByIndex(i);
+            numUserPosts = numPosts[i];
+            // check if any posts
+            if (numUserPosts == 0) {
+                continue;
+            }
+            long[] userPostNodes = new long[numUserPosts];
+            for (int iPost = 0; iPost < numUserPosts; ++iPost) {
+                postProperties = new HashMap<>();
+                postProperties
+                        .put(StatusUpdateProxy.PROP_PUBLISHED, tsLastPost);
+                postProperties.put(StatusUpdateProxy.PROP_MESSAGE,
+                        generatePostMessage(140));
+                nodeId = _inserter.createNode(postProperties, NodeType.UPDATE);
+                userPostNodes[iPost] = nodeId;
+                tsLastPost += 1;
+            }
+            user.setPostNodeIds(userPostNodes);
+            numTotalPosts += numUserPosts;
+            // update last_post
+            _inserter.setNodeProperty(user.getNodeId(),
+                    UserProxy.PROP_LAST_STREAM_UDPATE, tsLastPost);
+        }
+        return numTotalPosts;
     }
 
     @Override
@@ -55,30 +145,6 @@ public class Neo4jBootstrapClient extends BootstrapClient {
             numUsers += 1;
         }
         return numUsers;
-    }
-
-    protected long createSubscriptions(List<long[]> subscriptions) {
-        User user, followed;
-        long numSubscriptions = 0;
-        int i = 0;
-        for (long[] userSubscriptions : subscriptions) {
-            if (userSubscriptions == null) {
-                continue;
-            }
-            user = _users.getUserByIndex(i);
-            if (!IS_GRAPHITY) {// WriteOptimizedGraphity
-                for (long idFollowed : userSubscriptions) {
-                    followed = _users.getUser(idFollowed);
-                    _inserter.createRelationship(user.getNodeId(),
-                            followed.getNodeId(), EdgeType.FOLLOWS, null);
-                    numSubscriptions += 1;
-                }
-            } else {// ReadOptimizedGraphity
-                throw new IllegalStateException("can not subscribe");
-            }
-            i += 1;
-        }
-        return numSubscriptions;
     }
 
     @Override
@@ -101,53 +167,6 @@ public class Neo4jBootstrapClient extends BootstrapClient {
             }
         }
         return numSubscriptions;
-    }
-
-    protected long loadPosts(int[] numPosts) {
-        User user;
-        int numUserPosts;
-        long numTotalPosts = 0;
-        for (int i = 0; i < numPosts.length; ++i) {
-            user = _users.getUserByIndex(i);
-            numUserPosts = numPosts[i];
-            // check if any posts
-            if (numUserPosts == 0) {
-                continue;
-            }
-            user.setPostNodeIds(new long[numUserPosts]);
-            numTotalPosts += numUserPosts;
-        }
-        return numTotalPosts;
-    }
-
-    protected void createPosts(int[] numPosts) {
-        User user;
-        int numUserPosts;
-        Map<String, Object> postProperties;
-        long tsLastPost = System.currentTimeMillis();
-        long nodeId;
-        for (int i = 0; i < numPosts.length; ++i) {
-            user = _users.getUserByIndex(i);
-            numUserPosts = numPosts[i];
-            // check if any posts
-            if (numUserPosts == 0) {
-                continue;
-            }
-            long[] userPostNodes = user.getPostNodeIds();
-            for (int iPost = 0; iPost < numUserPosts; ++iPost) {
-                postProperties = new HashMap<>();
-                postProperties
-                        .put(StatusUpdateProxy.PROP_PUBLISHED, tsLastPost);
-                postProperties.put(StatusUpdateProxy.PROP_MESSAGE,
-                        generatePostMessage(140));
-                nodeId = _inserter.createNode(postProperties, NodeType.UPDATE);
-                userPostNodes[iPost] = nodeId;
-                tsLastPost += 1;
-            }
-            // update last_post
-            _inserter.setNodeProperty(user.getNodeId(),
-                    UserProxy.PROP_LAST_STREAM_UDPATE, tsLastPost);
-        }
     }
 
     @Override
