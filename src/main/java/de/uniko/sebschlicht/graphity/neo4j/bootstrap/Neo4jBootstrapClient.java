@@ -29,7 +29,6 @@ public class Neo4jBootstrapClient extends BootstrapClient {
         _inserter.shutdown();
     }
 
-    @Override
     protected void createUsers(long[] userIds) {
         User user;
         Map<String, Object> userProperties;
@@ -44,6 +43,20 @@ public class Neo4jBootstrapClient extends BootstrapClient {
     }
 
     @Override
+    protected long createUsers() {
+        long numUsers = 0, nodeId;
+        Map<String, Object> userProperties;
+        for (User user : _users.getUsers()) {
+            userProperties = new HashMap<>();
+            userProperties.put(UserProxy.PROP_IDENTIFIER,
+                    String.valueOf(user.getId()));
+            nodeId = _inserter.createNode(userProperties, NodeType.USER);
+            user.setNodeId(nodeId);
+            numUsers += 1;
+        }
+        return numUsers;
+    }
+
     protected long createSubscriptions(List<long[]> subscriptions) {
         User user, followed;
         long numSubscriptions = 0;
@@ -69,6 +82,27 @@ public class Neo4jBootstrapClient extends BootstrapClient {
     }
 
     @Override
+    protected long createSubscriptions() {
+        long numSubscriptions = 0;
+        for (User user : _users.getUsers()) {
+            long[] subscriptions = user.getSubscriptions();
+            if (subscriptions == null) {// can this happen?
+                continue;
+            }
+            if (!IS_GRAPHITY) {// WriteOptimizedGraphity
+                for (long idFollowed : subscriptions) {
+                    User followed = _users.getUser(idFollowed);
+                    _inserter.createRelationship(user.getNodeId(),
+                            followed.getNodeId(), EdgeType.FOLLOWS, null);
+                    numSubscriptions += 1;
+                }
+            } else {// ReadOptimizedGraphity
+                throw new IllegalStateException("can not subscribe");
+            }
+        }
+        return numSubscriptions;
+    }
+
     protected long loadPosts(int[] numPosts) {
         User user;
         int numUserPosts;
@@ -86,7 +120,6 @@ public class Neo4jBootstrapClient extends BootstrapClient {
         return numTotalPosts;
     }
 
-    @Override
     protected void createPosts(int[] numPosts) {
         User user;
         int numUserPosts;
@@ -118,6 +151,31 @@ public class Neo4jBootstrapClient extends BootstrapClient {
     }
 
     @Override
+    protected long createPosts() {
+        long numTotalPosts = 0;
+        Map<String, Object> postProperties;
+        long tsLastPost = System.currentTimeMillis();
+        long nodeId;
+        for (User user : _users.getUsers()) {
+            long[] userPostNodes = user.getPostNodeIds();
+            for (int iPost = 0; iPost < userPostNodes.length; ++iPost) {
+                postProperties = new HashMap<>();
+                postProperties
+                        .put(StatusUpdateProxy.PROP_PUBLISHED, tsLastPost);
+                postProperties.put(StatusUpdateProxy.PROP_MESSAGE,
+                        generatePostMessage(140));
+                nodeId = _inserter.createNode(postProperties, NodeType.UPDATE);
+                userPostNodes[iPost] = nodeId;
+                tsLastPost += 1;
+                numTotalPosts += 1;
+            }
+            // update last_post
+            _inserter.setNodeProperty(user.getNodeId(),
+                    UserProxy.PROP_LAST_STREAM_UDPATE, tsLastPost);
+        }
+        return numTotalPosts;
+    }
+
     protected void linkPosts(int[] numPosts) {
         User user;
         for (int i = 0; i < numPosts.length; ++i) {
@@ -138,9 +196,28 @@ public class Neo4jBootstrapClient extends BootstrapClient {
         }
     }
 
+    @Override
+    protected void linkPosts() {
+        for (User user : _users.getUsers()) {
+            if (user.getNumPosts() == 0) {// should not happen
+                continue;
+            }
+            long[] postNodeIds = user.getPostNodeIds();
+            for (int iPost = 0; iPost < postNodeIds.length; ++iPost) {
+                if (iPost + 1 < postNodeIds.length) {// newerPost -> olderPost
+                    _inserter.createRelationship(postNodeIds[iPost + 1],
+                            postNodeIds[iPost], EdgeType.PUBLISHED, null);
+                } else {// user -> newestPost
+                    _inserter.createRelationship(user.getNodeId(),
+                            postNodeIds[iPost], EdgeType.PUBLISHED, null);
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) throws IOException {
-        File fDatabase = new File("/tmp/neo4jbl");
-        File fBootstrapLog = new File("/tmp/bootstrap.log");
+        File fDatabase = new File("/media/shared/neoboot");
+        File fBootstrapLog = new File("bootstrap.log");
         final Neo4jBootstrapClient bootstrapClient =
                 new Neo4jBootstrapClient(fDatabase.getAbsolutePath());
 
