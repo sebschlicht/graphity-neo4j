@@ -118,6 +118,7 @@ public class Neo4jBootstrapper extends BootstrapClient {
         if (args.length != 2) {
             System.out
                     .println("usage: Neo4jBootstrapper <pathBootstrapLog> <pathNeo4jDb>");
+            throw new IllegalArgumentException("invalid number of arguments");
         }
         File fBootstrapLog = new File(args[0]);
         File fDatabase = new File(args[1]);
