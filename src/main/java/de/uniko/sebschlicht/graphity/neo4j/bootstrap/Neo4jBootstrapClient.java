@@ -2,28 +2,21 @@ package de.uniko.sebschlicht.graphity.neo4j.bootstrap;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
 
 import org.neo4j.unsafe.batchinsert.BatchInserter;
 import org.neo4j.unsafe.batchinsert.BatchInserters;
 
 import de.uniko.sebschlicht.graphity.bootstrap.BootstrapClient;
 import de.uniko.sebschlicht.graphity.bootstrap.User;
-import de.uniko.sebschlicht.graphity.bootstrap.UserManager;
-import de.uniko.sebschlicht.graphity.bootstrap.generate.MutableState;
-import de.uniko.sebschlicht.graphity.bootstrap.load.BootstrapLoader;
 import de.uniko.sebschlicht.graphity.neo4j.EdgeType;
 import de.uniko.sebschlicht.graphity.neo4j.NodeType;
 import de.uniko.sebschlicht.graphity.neo4j.model.StatusUpdateProxy;
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
-import de.uniko.sebschlicht.socialnet.Subscription;
 
-public class Neo4jBootstrapClient extends BootstrapClient {
+public class Neo4jBootstrapClient extends BootstrapClient implements
+        Neo4jBootstrap {
 
     private BatchInserter _inserter;
 
@@ -50,6 +43,7 @@ public class Neo4jBootstrapClient extends BootstrapClient {
      * @param numPosts
      *            number of posts per user, where users are sorted as in userIds
      */
+    @Override
     public void bootstrap(long[] userIds, long[] subscriptions, int[] numPosts) {
         long numUsers = createUsers(userIds);
         System.out.println(numUsers + " users created.");
@@ -278,83 +272,6 @@ public class Neo4jBootstrapClient extends BootstrapClient {
             numTotalPosts += postNodeIds.length;
         }
         return numTotalPosts;
-    }
-
-    private void neo4jBootstrap(File fBootstrapLog) throws IOException {
-        BootstrapLoader bootstrapLoader =
-                new BootstrapLoader(fBootstrapLog, true);
-        MutableState state = bootstrapLoader.getState();
-        _users = new UserManager();
-
-        TreeSet<Long> sUserIds = new TreeSet<>();
-        ArrayList<Long> aUserIds = new ArrayList<>();
-
-        // convert from mutable to final social network state
-        // Note: This will happen on the client machine!
-        long prevUserId = -1, userId = 0;
-        ArrayList<Long> aSubscriptions = new ArrayList<>();
-        List<Long> userSubs = new LinkedList<>();
-
-        // load subscriptions and followers
-        TreeSet<Subscription> subscriptions = state.getSubscriptions();
-        int iSubscription = 0;
-        int numSubscriptions = subscriptions.size();
-        for (Subscription subscription : subscriptions) {
-            // switch to current user
-            userId = subscription.getIdSubscriber();
-            if (userId != prevUserId) {
-                // make previous user persistent when switching to a new user
-                aSubscriptions.add((long) userSubs.size());
-                for (long userSub : userSubs) {
-                    aSubscriptions.add(userSub);
-                }
-                // switch to new user
-                sUserIds.add(userId);
-                aUserIds.add(userId);
-                userSubs.clear();
-                prevUserId = userId;
-            }
-
-            // add subscription for current user
-            userSubs.add(subscription.getIdFollowed());
-
-            // make persistent if last user
-            if (iSubscription == numSubscriptions - 1) {
-                aSubscriptions.add((long) userSubs.size());
-                for (long userSub : userSubs) {
-                    aSubscriptions.add(userSub);
-                }
-            }
-            iSubscription += 1;
-        }
-
-        // load posts and authors
-        ArrayList<Integer> aNumPosts = new ArrayList<Integer>();
-        Map<Long, int[]> numPosts = state.getNumPosts();
-        for (long crrUserId : aUserIds) {// load posts from users with active subscriptions
-            int[] numUserPosts = numPosts.get(crrUserId);
-            aNumPosts.add(numUserPosts[1]);// total number of posts // we are bootstrapping!
-        }
-        for (Map.Entry<Long, int[]> entry : numPosts.entrySet()) {
-            userId = entry.getKey();
-            if (sUserIds.contains(userId)) {// user with active subscriptions
-                continue;
-            }
-            int[] numUserPosts = entry.getValue();
-            aUserIds.add(userId);
-            aNumPosts.add(numUserPosts[1]);// total number of posts // we are bootstrapping!
-        }
-
-        long[] userIds = listToArray(aUserIds);
-        long[] arraySubscriptions = listToArray(aSubscriptions);
-        int[] arrayNumPosts = new int[aNumPosts.size()];
-        int i = 0;
-        for (int value : aNumPosts) {
-            arrayNumPosts[i] = value;
-            i += 1;
-        }
-
-        bootstrap(userIds, arraySubscriptions, arrayNumPosts);
     }
 
     public static void main(String[] args) throws IOException {
