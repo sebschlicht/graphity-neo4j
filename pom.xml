@@ -1,13 +1,14 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>de.uniko.sebschlicht</groupId>
   <artifactId>graphity-neo4j</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  
+
   <name>Graphity@Neo4j</name>
   <description>Graphity implementation using Neo4j.</description>
   <url>https://github.com/sebschlicht/graphity-neo4j</url>
-  
+
   <licenses>
     <license>
       <name>GNU General Public License 3.0</name>
@@ -15,8 +16,10 @@
       <distribution>repo</distribution>
     </license>
   </licenses>
-  
+
   <properties>
+    <java.exec.launcherClass>de.uniko.sebschlicht.graphity.neo4j.bootstrap.Neo4jBootstrapper</java.exec.launcherClass>
+
     <!-- version of Java compiler plugin -->
     <java.compiler-plugin.version>3.1</java.compiler-plugin.version>
     <java.exec.version>1.2.1</java.exec.version>
@@ -37,7 +40,7 @@
     <socialnet.version>0.2.0-SNAPSHOT</socialnet.version>
     <json.version>1.1</json.version>
   </properties>
-  
+
   <dependencies>
     <dependency>
       <groupId>org.neo4j</groupId>
