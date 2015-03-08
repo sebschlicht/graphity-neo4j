@@ -84,9 +84,10 @@ public class Neo4jBootstrapper extends BootstrapClient {
                 tsLastPost += 1;
                 numTotalPosts += 1;
             }
+            //TODO we could create posts first and could save the timestamp for user instead
             // update last_post
             _inserter.setNodeProperty(user.getNodeId(),
-                    UserProxy.PROP_LAST_STREAM_UDPATE, tsLastPost);
+                    UserProxy.PROP_LAST_STREAM_UDPATE, tsLastPost - 1);
         }
         return numTotalPosts;
     }
