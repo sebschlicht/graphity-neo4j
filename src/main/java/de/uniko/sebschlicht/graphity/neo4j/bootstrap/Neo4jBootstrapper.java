@@ -169,8 +169,10 @@ public class Neo4jBootstrapper extends BootstrapClient {
         String sAlgorithm = args[2];
         if ("stou".equalsIgnoreCase(sAlgorithm)) {
             isGraphity = false;
+            System.out.println("STOU model set");
         } else if ("graphity".equalsIgnoreCase(sAlgorithm)) {
             isGraphity = true;
+            System.out.println("Graphity model set");
         } else {
             throw new IllegalArgumentException(
                     "Invalid social network algorithm! Use \"stou\" or \"graphity\".");

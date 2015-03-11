@@ -8,6 +8,10 @@ public abstract class SocialNodeProxy {
 
     public SocialNodeProxy(
             Node node) {
+        if (node == null) {
+            throw new IllegalStateException(
+                    "You must provide a node to create a proxy for it!");
+        }
         this.node = node;
     }
 
