@@ -66,7 +66,7 @@ public class Neo4jBootstrapper extends BootstrapClient {
     @Override
     protected long createSubscriptions() {
         long numSubscriptions = 0;
-        ArrayList<User> tmp = new ArrayList<User>();
+        ArrayList<User> tmp = new ArrayList<>();
         for (User user : _users.getUsers()) {
             long[] subscriptions = user.getSubscriptions();
             if (subscriptions == null) {// can this happen?
@@ -80,23 +80,27 @@ public class Neo4jBootstrapper extends BootstrapClient {
                     numSubscriptions += 1;
                 }
             } else {// ReadOptimizedGraphity
-                for (long idFollowed : subscriptions) {
-                    User followed = _users.getUser(idFollowed);
-                    _inserter.createRelationship(user.getNodeId(),
-                            followed.getNodeId(), EdgeType.FOLLOWS, null);
+                // link users with replicas
+                long[] replicas = user.getReplicas();
+                for (int i = 0; i < replicas.length; ++i) {
+                    // user -> FOLLOWS -> replica
+                    _inserter.createRelationship(user.getNodeId(), replicas[i],
+                            EdgeType.FOLLOWS, null);
+                    User followed = _users.getUser(subscriptions[i]);
                     tmp.add(followed);
+                    // replica -> REPLICA -> followed
+                    _inserter.createRelationship(replicas[i],
+                            followed.getNodeId(), EdgeType.REPLICA, null);
                     numSubscriptions += 1;
                 }
+                // link replica layer (ego network)
                 Collections.sort(tmp);
                 User prev = user;
                 for (User followed : tmp) {
                     _inserter.createRelationship(prev.getNodeId(),
                             followed.getNodeId(), EdgeType.GRAPHITY, null);
                 }
-
                 tmp.clear();
-                throw new IllegalStateException("can not subscribe");
-
             }
         }
         return numSubscriptions;
