@@ -37,6 +37,7 @@ public class Neo4jBootstrapper extends BootstrapClient {
     protected long createUsers() {
         long numUsers = 0, nodeId;
         Map<String, Object> userProperties;
+        ArrayList<User> tmp = new ArrayList<>();
         Label[] nolabel = new Label[0];
         for (User user : _users.getUsers()) {
             userProperties = new HashMap<>();
@@ -49,17 +50,26 @@ public class Neo4jBootstrapper extends BootstrapClient {
             numUsers += 1;
 
             if (_isGraphity) {
-                // create replica nodes as well
                 long[] subscriptions = user.getSubscriptions();
                 if (subscriptions == null) {// can this happen?
                     continue;
                 }
                 long[] replicas = new long[subscriptions.length];
-                for (int i = 0; i < subscriptions.length; ++i) {
+
+                // sort subscriptions and create replica nodes
+                for (long idFollowed : subscriptions) {
+                    tmp.add(_users.getUser(idFollowed));
+                }
+                Collections.sort(tmp);
+                int i = 0;
+                for (User followed : tmp) {
+                    subscriptions[i] = followed.getId();
                     nodeId = _inserter.createNode(null, nolabel);
                     replicas[i] = nodeId;
+                    i += 1;
                 }
                 user.setReplicas(replicas);
+                tmp.clear();
             }
         }
         return numUsers;
@@ -68,7 +78,6 @@ public class Neo4jBootstrapper extends BootstrapClient {
     @Override
     protected long createSubscriptions() {
         long numSubscriptions = 0;
-        ArrayList<User> tmp = new ArrayList<>();
         for (User user : _users.getUsers()) {
             long[] subscriptions = user.getSubscriptions();
             if (subscriptions == null) {// can this happen?
@@ -82,27 +91,23 @@ public class Neo4jBootstrapper extends BootstrapClient {
                     numSubscriptions += 1;
                 }
             } else {// ReadOptimizedGraphity
-                // link users with replicas
+                // link users and replica layer
+                long prev = user.getNodeId();
                 long[] replicas = user.getReplicas();
                 for (int i = 0; i < replicas.length; ++i) {
                     // user -> FOLLOWS -> replica
                     _inserter.createRelationship(user.getNodeId(), replicas[i],
                             EdgeType.FOLLOWS, null);
-                    User followed = _users.getUser(subscriptions[i]);
-                    tmp.add(followed);
                     // replica -> REPLICA -> followed
+                    User followed = _users.getUser(subscriptions[i]);
                     _inserter.createRelationship(replicas[i],
                             followed.getNodeId(), EdgeType.REPLICA, null);
+                    // user/replica -> GRAPHITY -> replica
+                    _inserter.createRelationship(prev, replicas[i],
+                            EdgeType.GRAPHITY, null);
                     numSubscriptions += 1;
+                    prev = replicas[i];
                 }
-                // link replica layer (ego network)
-                Collections.sort(tmp);
-                User prev = user;
-                for (User followed : tmp) {
-                    _inserter.createRelationship(prev.getNodeId(),
-                            followed.getNodeId(), EdgeType.GRAPHITY, null);
-                }
-                tmp.clear();
             }
         }
         return numSubscriptions;
