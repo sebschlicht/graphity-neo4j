@@ -23,7 +23,9 @@ public class Neo4jBootstrapper extends BootstrapClient {
     private BatchInserter _inserter;
 
     public Neo4jBootstrapper(
-            String databasePath) {
+            String databasePath,
+            boolean isGraphity) {
+        super(isGraphity);
         _inserter = BatchInserters.inserter(databasePath);
     }
 
@@ -46,7 +48,7 @@ public class Neo4jBootstrapper extends BootstrapClient {
             user.setNodeId(nodeId);
             numUsers += 1;
 
-            if (IS_GRAPHITY) {
+            if (_isGraphity) {
                 // create replica nodes as well
                 long[] subscriptions = user.getSubscriptions();
                 if (subscriptions == null) {// can this happen?
@@ -72,7 +74,7 @@ public class Neo4jBootstrapper extends BootstrapClient {
             if (subscriptions == null) {// can this happen?
                 continue;
             }
-            if (!IS_GRAPHITY) {// WriteOptimizedGraphity
+            if (!_isGraphity) {// WriteOptimizedGraphity
                 for (long idFollowed : subscriptions) {
                     User followed = _users.getUser(idFollowed);
                     _inserter.createRelationship(user.getNodeId(),
@@ -156,15 +158,25 @@ public class Neo4jBootstrapper extends BootstrapClient {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 2) {
+        if (args.length != 3) {
             System.out
-                    .println("usage: Neo4jBootstrapper <pathBootstrapLog> <pathNeo4jDb>");
+                    .println("usage: Neo4jBootstrapper <pathBootstrapLog> <pathNeo4jDb> <algorithm {stou|graphity}>");
             throw new IllegalArgumentException("invalid number of arguments");
         }
         File fBootstrapLog = new File(args[0]);
         File fDatabase = new File(args[1]);
+        boolean isGraphity;
+        String sAlgorithm = args[2];
+        if ("stou".equalsIgnoreCase(sAlgorithm)) {
+            isGraphity = false;
+        } else if ("graphity".equalsIgnoreCase(sAlgorithm)) {
+            isGraphity = true;
+        } else {
+            throw new IllegalArgumentException(
+                    "Invalid social network algorithm! Use \"stou\" or \"graphity\".");
+        }
         final Neo4jBootstrapper bootstrapClient =
-                new Neo4jBootstrapper(fDatabase.getAbsolutePath());
+                new Neo4jBootstrapper(fDatabase.getAbsolutePath(), isGraphity);
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
 
