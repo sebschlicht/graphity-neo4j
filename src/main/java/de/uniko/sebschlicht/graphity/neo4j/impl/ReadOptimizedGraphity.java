@@ -39,24 +39,17 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
     @Override
     protected boolean addFollowship(Node nFollowing, Node nFollowed) {
-        // try to find the replica node of the user followed
-        Node followedReplica = null;
+        // try to find the node of the user followed
         for (Relationship followship : nFollowing.getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
-            followedReplica = followship.getEndNode();
-            if (Walker.nextNode(followedReplica, EdgeType.REPLICA).equals(
-                    nFollowed)) {
-                break;
+            if (followship.getEndNode().equals(nFollowed)) {
+                return false;
             }
-            followedReplica = null;
         }
-        // user is following already
-        if (followedReplica != null) {
-            return false;
-        }
+
         // create replica
         final Node newReplica = graphDb.createNode();
-        nFollowing.createRelationshipTo(newReplica, EdgeType.FOLLOWS);
+        nFollowing.createRelationshipTo(nFollowed, EdgeType.FOLLOWS);
         newReplica.createRelationshipTo(nFollowed, EdgeType.REPLICA);
         // check if followed user is the first in following's ego network
         if (Walker.nextNode(nFollowing, EdgeType.GRAPHITY) == null) {

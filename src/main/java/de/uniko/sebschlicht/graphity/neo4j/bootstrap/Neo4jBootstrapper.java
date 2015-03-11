@@ -2,9 +2,12 @@ package de.uniko.sebschlicht.graphity.neo4j.bootstrap;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.neo4j.graphdb.Label;
 import org.neo4j.unsafe.batchinsert.BatchInserter;
 import org.neo4j.unsafe.batchinsert.BatchInserters;
 
@@ -32,13 +35,30 @@ public class Neo4jBootstrapper extends BootstrapClient {
     protected long createUsers() {
         long numUsers = 0, nodeId;
         Map<String, Object> userProperties;
+        Label[] nolabel = new Label[0];
         for (User user : _users.getUsers()) {
             userProperties = new HashMap<>();
             userProperties.put(UserProxy.PROP_IDENTIFIER,
                     String.valueOf(user.getId()));
+            userProperties.put(UserProxy.PROP_LAST_STREAM_UDPATE,
+                    user.getTsLastPost());
             nodeId = _inserter.createNode(userProperties, NodeType.USER);
             user.setNodeId(nodeId);
             numUsers += 1;
+
+            if (IS_GRAPHITY) {
+                // create replica nodes as well
+                long[] subscriptions = user.getSubscriptions();
+                if (subscriptions == null) {// can this happen?
+                    continue;
+                }
+                long[] replicas = new long[subscriptions.length];
+                for (int i = 0; i < subscriptions.length; ++i) {
+                    nodeId = _inserter.createNode(null, nolabel);
+                    replicas[i] = nodeId;
+                }
+                user.setReplicas(replicas);
+            }
         }
         return numUsers;
     }
@@ -46,6 +66,7 @@ public class Neo4jBootstrapper extends BootstrapClient {
     @Override
     protected long createSubscriptions() {
         long numSubscriptions = 0;
+        ArrayList<User> tmp = new ArrayList<User>();
         for (User user : _users.getUsers()) {
             long[] subscriptions = user.getSubscriptions();
             if (subscriptions == null) {// can this happen?
@@ -59,7 +80,23 @@ public class Neo4jBootstrapper extends BootstrapClient {
                     numSubscriptions += 1;
                 }
             } else {// ReadOptimizedGraphity
+                for (long idFollowed : subscriptions) {
+                    User followed = _users.getUser(idFollowed);
+                    _inserter.createRelationship(user.getNodeId(),
+                            followed.getNodeId(), EdgeType.FOLLOWS, null);
+                    tmp.add(followed);
+                    numSubscriptions += 1;
+                }
+                Collections.sort(tmp);
+                User prev = user;
+                for (User followed : tmp) {
+                    _inserter.createRelationship(prev.getNodeId(),
+                            followed.getNodeId(), EdgeType.GRAPHITY, null);
+                }
+
+                tmp.clear();
                 throw new IllegalStateException("can not subscribe");
+
             }
         }
         return numSubscriptions;
@@ -81,13 +118,12 @@ public class Neo4jBootstrapper extends BootstrapClient {
                         generatePostMessage(140));
                 nodeId = _inserter.createNode(postProperties, NodeType.UPDATE);
                 userPostNodes[iPost] = nodeId;
+                if (iPost == userPostNodes.length - 1) {
+                    user.setTsLastPost(tsLastPost);
+                }
                 tsLastPost += 1;
                 numTotalPosts += 1;
             }
-            //TODO we could create posts first and could save the timestamp for user instead
-            // update last_post
-            _inserter.setNodeProperty(user.getNodeId(),
-                    UserProxy.PROP_LAST_STREAM_UDPATE, tsLastPost - 1);
         }
         return numTotalPosts;
     }
