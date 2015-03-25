@@ -84,6 +84,12 @@ public class UserProxy extends SocialNodeProxy {
         node.createRelationshipTo(pStatusUpdate.getNode(), EdgeType.PUBLISHED);
     }
 
+    /**
+     * Retrieves the user identifier.<br>
+     * Caches the user identifier for future calls.
+     * 
+     * @return (cached) user identifier
+     */
     public String getIdentifier() {
         if (identifier == null) {
             identifier = (String) node.getProperty(PROP_IDENTIFIER);
