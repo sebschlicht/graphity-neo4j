@@ -61,7 +61,7 @@ public abstract class Neo4jGraphity extends Graphity {
         }
 
         try (Transaction tx = graphDb.beginTx()) {
-            graphDb.schema().awaitIndexesOnline(10, TimeUnit.SECONDS);
+            graphDb.schema().awaitIndexesOnline(60, TimeUnit.SECONDS);
         }
     }
 
