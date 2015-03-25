@@ -11,8 +11,7 @@ public class Test {
 
     public static void main(String[] args) throws UnknownReaderIdException {
         GraphDatabaseService graph =
-                new GraphDatabaseFactory()
-                        .newEmbeddedDatabase("/media/shared/tmp/neotestdb");
+                new GraphDatabaseFactory().newEmbeddedDatabase(args[0]);
         Neo4jGraphity graphity = new WriteOptimizedGraphity(graph);
         System.out.println("loading indices..");
         graphity.init();
