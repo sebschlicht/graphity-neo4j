@@ -17,8 +17,9 @@ public class Test {
         graphity.init();
         System.out.println("database ready.");
 
+        int numUsersExpected = Integer.valueOf(args[1]);
         int numUsersNonEmpty = 0, feedSize;
-        for (int i = 1; i <= 40050; ++i) {
+        for (int i = 1; i <= numUsersExpected; ++i) {
             feedSize = graphity.readStatusUpdates(String.valueOf(i), 15).size();
             if (feedSize > 0) {
                 numUsersNonEmpty += 1;
@@ -30,7 +31,7 @@ public class Test {
         System.out.println(numUsersNonEmpty
                 + " users have news feed to display.");
         int numFeeds = 0;
-        for (int i = 1; i <= 40050; ++i) {
+        for (int i = 1; i <= numUsersExpected; ++i) {
             feedSize = graphity.readStatusUpdates(String.valueOf(i), 15).size();
             if (feedSize > 0) {
                 numFeeds += feedSize;
