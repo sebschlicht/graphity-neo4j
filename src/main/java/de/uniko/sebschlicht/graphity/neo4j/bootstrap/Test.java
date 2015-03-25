@@ -10,8 +10,17 @@ import de.uniko.sebschlicht.graphity.neo4j.impl.WriteOptimizedGraphity;
 public class Test {
 
     public static void main(String[] args) throws UnknownReaderIdException {
-        GraphDatabaseService graph =
+        final GraphDatabaseService graph =
                 new GraphDatabaseFactory().newEmbeddedDatabase(args[0]);
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+
+            @Override
+            public void run() {
+                graph.shutdown();
+                System.out.println("exited.");
+            }
+        });
+
         Neo4jGraphity graphity = new WriteOptimizedGraphity(graph);
         System.out.println("loading indices..");
         graphity.init();
