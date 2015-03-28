@@ -203,7 +203,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             subscribers.add(new UserProxy(followingUser));
         }
         for (UserProxy user : subscribers) {
-            tx.acquireReadLock(user.getNode());
+            tx.acquireWriteLock(user.getNode());
         }
 
         return addStatusUpdate(nAuthor, statusUpdate);
