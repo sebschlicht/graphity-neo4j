@@ -7,6 +7,7 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
@@ -175,13 +176,37 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             if (!lastPosterReplica.equals(followedReplica)) {
                 followingUser.getSingleRelationship(EdgeType.GRAPHITY,
                         Direction.OUTGOING).delete();
-                // FIXME
                 followingUser.createRelationshipTo(followedReplica,
                         EdgeType.GRAPHITY);
                 followedReplica.createRelationshipTo(lastPosterReplica,
                         EdgeType.GRAPHITY);
             }
         }
+    }
+
+    @Override
+    protected long addStatusUpdate(
+            Node nAuthor,
+            StatusUpdate statusUpdate,
+            Transaction tx) {
+        tx.acquireWriteLock(nAuthor);
+
+        // lock ego network
+        TreeSet<UserProxy> subscribers =
+                new TreeSet<>(new LockUserComparator());
+        Node followingReplica, followingUser;
+        for (Relationship followship : nAuthor.getRelationships(
+                EdgeType.REPLICA, Direction.INCOMING)) {
+            followingReplica = followship.getStartNode();
+            followingUser =
+                    Walker.previousNode(followingReplica, EdgeType.FOLLOWS);
+            subscribers.add(new UserProxy(followingUser));
+        }
+        for (UserProxy user : subscribers) {
+            tx.acquireReadLock(user.getNode());
+        }
+
+        return addStatusUpdate(nAuthor, statusUpdate);
     }
 
     @Override
