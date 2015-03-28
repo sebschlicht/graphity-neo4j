@@ -207,9 +207,9 @@ public abstract class Neo4jGraphity extends Graphity {
         if (result) {
             long msCrr = System.currentTimeMillis();
             addStatusUpdate(nFollowing, new StatusUpdate(idFollowing, msCrr,
-                    "now follows " + idFollowed));
+                    "now follows " + idFollowed), tx);
             addStatusUpdate(nFollowed, new StatusUpdate(idFollowed, msCrr,
-                    "has new follower " + idFollowing));
+                    "has new follower " + idFollowing), tx);
         }
         return result;
     }
@@ -275,9 +275,9 @@ public abstract class Neo4jGraphity extends Graphity {
         if (result) {
             long msCrr = System.currentTimeMillis();
             addStatusUpdate(nFollowing, new StatusUpdate(idFollowing, msCrr,
-                    "did unfollow " + idFollowed));
+                    "did unfollow " + idFollowed), tx);
             addStatusUpdate(nFollowed, new StatusUpdate(idFollowed, msCrr,
-                    "was unfollowed by " + idFollowing));
+                    "was unfollowed by " + idFollowing), tx);
         }
         return result;
     }
@@ -322,9 +322,16 @@ public abstract class Neo4jGraphity extends Graphity {
         addStatusUpdate(String idAuthor, String message, Transaction tx)
                 throws IllegalUserIdException {
         Node nAuthor = loadUser(idAuthor);
-        tx.acquireWriteLock(nAuthor);
         StatusUpdate statusUpdate =
                 new StatusUpdate(idAuthor, System.currentTimeMillis(), message);
+        return addStatusUpdate(nAuthor, statusUpdate, tx);
+    }
+
+    protected long addStatusUpdate(
+            Node nAuthor,
+            StatusUpdate statusUpdate,
+            Transaction tx) {
+        tx.acquireWriteLock(nAuthor);
         return addStatusUpdate(nAuthor, statusUpdate);
     }
 

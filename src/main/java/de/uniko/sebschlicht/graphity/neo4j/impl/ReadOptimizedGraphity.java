@@ -46,13 +46,9 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             followedReplica = followship.getEndNode();
             if (Walker.nextNode(followedReplica, EdgeType.REPLICA).equals(
                     nFollowed)) {
-                break;
+                // user is following already
+                return false;
             }
-            followedReplica = null;
-        }
-        // user is following already
-        if (followedReplica != null) {
-            return false;
         }
 
         // create replica
@@ -179,6 +175,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             if (!lastPosterReplica.equals(followedReplica)) {
                 followingUser.getSingleRelationship(EdgeType.GRAPHITY,
                         Direction.OUTGOING).delete();
+                // FIXME
                 followingUser.createRelationshipTo(followedReplica,
                         EdgeType.GRAPHITY);
                 followedReplica.createRelationshipTo(lastPosterReplica,
