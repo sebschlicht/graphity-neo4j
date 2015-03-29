@@ -189,11 +189,10 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             Node nAuthor,
             StatusUpdate statusUpdate,
             Transaction tx) {
-        tx.acquireWriteLock(nAuthor);
-
-        // lock ego network
+        // lock user and ego network
         TreeSet<UserProxy> subscribers =
                 new TreeSet<>(new LockUserComparator());
+        subscribers.add(new UserProxy(nAuthor));
         Node followingReplica, followingUser;
         for (Relationship followship : nAuthor.getRelationships(
                 EdgeType.REPLICA, Direction.INCOMING)) {
