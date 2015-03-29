@@ -11,9 +11,9 @@ public class LockUserComparator implements Comparator<UserProxy> {
         long i1 = Long.valueOf(u1.getIdentifier());
         long i2 = Long.valueOf(u2.getIdentifier());
         if (i1 < i2) {
-            return 1;
-        } else if (i1 > i2) {
             return -1;
+        } else if (i1 > i2) {
+            return 1;
         } else {
             return 0;
         }
