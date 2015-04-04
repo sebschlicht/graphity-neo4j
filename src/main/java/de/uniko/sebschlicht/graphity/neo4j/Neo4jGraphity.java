@@ -318,37 +318,20 @@ public abstract class Neo4jGraphity extends Graphity {
 
     @Override
     public StatusUpdateList readStatusUpdates(
-            String idReader,
-            int numStatusUpdates) throws UnknownReaderIdException {
+            String sIdReader,
+            int numStatusUpdates) throws IllegalUserIdException,
+            UnknownReaderIdException {
+        long idReader = checkUserId(sIdReader);
         try (Transaction tx = graphDb.beginTx()) {
-            StatusUpdateList statusUpdates =
-                    readStatusUpdates(idReader, numStatusUpdates, tx);
-            return statusUpdates;
+            UserProxy reader = findUser(idReader);
+            if (reader != null) {
+                return readStatusUpdates(reader, numStatusUpdates);
+            }
+            throw new UnknownReaderIdException(sIdReader);
         }
-    }
-
-    /**
-     * Reads a news feed without nested transactions.
-     * 
-     * @param idReader
-     * @param numStatusUpdates
-     * @param tx
-     *            current graph transaction
-     * @return
-     * @throws UnknownReaderIdException
-     */
-    public StatusUpdateList readStatusUpdates(
-            String idReader,
-            int numStatusUpdates,
-            Transaction tx) throws UnknownReaderIdException {
-        Node nReader = findUserNode(idReader);
-        if (nReader != null) {
-            return readStatusUpdates(nReader, numStatusUpdates);
-        }
-        throw new UnknownReaderIdException(idReader);
     }
 
     abstract protected StatusUpdateList readStatusUpdates(
-            Node nReader,
+            UserProxy reader,
             int numStatusUpdates);
 }
