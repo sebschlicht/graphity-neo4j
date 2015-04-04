@@ -73,7 +73,7 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
-    protected long addStatusUpdate(Node nAuthor, StatusUpdate statusUpdate) {
+    protected long addStatusUpdate(UserProxy author, StatusUpdate statusUpdate) {
         // create new status update node and fill via proxy
         Node crrUpdate = graphDb.createNode(NodeType.UPDATE);
         StatusUpdateProxy pStatusUpdate = new StatusUpdateProxy(crrUpdate);
@@ -82,8 +82,7 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
                 statusUpdate.getMessage());
 
         // add status update to user (link node, update user)
-        UserProxy pAuthor = new UserProxy(nAuthor);
-        pAuthor.addStatusUpdate(pStatusUpdate);
+        author.addStatusUpdate(pStatusUpdate);
 
         return pStatusUpdate.getIdentifier();
     }

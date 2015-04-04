@@ -1,6 +1,8 @@
 package de.uniko.sebschlicht.graphity.neo4j.impl;
 
 import java.io.File;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.TreeSet;
 
 import org.neo4j.graphdb.Direction;
@@ -179,31 +181,29 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
     @Override
     protected long addStatusUpdate(
-            Node nAuthor,
+            UserProxy author,
             StatusUpdate statusUpdate,
             Transaction tx) {
         // lock user and ego network
-        TreeSet<UserProxy> subscribers =
-                new TreeSet<>(new LockUserComparator());
-        subscribers.add(new UserProxy(nAuthor));
-        Node followingReplica, followingUser;
-        for (Relationship followship : nAuthor.getRelationships(
+        List<UserProxy> replicaLayer = new LinkedList<>();
+        replicaLayer.add(author);
+        Node rFollowing, following;
+        for (Relationship followship : author.getNode().getRelationships(
                 EdgeType.REPLICA, Direction.INCOMING)) {
-            followingReplica = followship.getStartNode();
-            followingUser =
-                    Walker.previousNode(followingReplica, EdgeType.FOLLOWS);
-            subscribers.add(new UserProxy(followingUser));
+            rFollowing = followship.getStartNode();
+            following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
+            replicaLayer.add(new UserProxy(following));
         }
-        for (UserProxy user : subscribers) {
-            tx.acquireWriteLock(user.getNode());
+        LockManager.lock(tx, replicaLayer);
+        try {
+            return addStatusUpdate(author, statusUpdate);
+        } finally {
+            LockManager.releaseLocks(tx);
         }
-
-        return addStatusUpdate(nAuthor, statusUpdate);
-        //TODO release locks
     }
 
     @Override
-    protected long addStatusUpdate(Node nAuthor, StatusUpdate statusUpdate) {
+    protected long addStatusUpdate(UserProxy author, StatusUpdate statusUpdate) {
         // create new status update node and fill via proxy
         Node crrUpdate = graphDb.createNode(NodeType.UPDATE);
         StatusUpdateProxy pStatusUpdate = new StatusUpdateProxy(crrUpdate);
@@ -212,12 +212,10 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 statusUpdate.getMessage());
 
         // add status update to user (link node, update user)
-        UserProxy pAuthor = new UserProxy(nAuthor);
-        pAuthor.addStatusUpdate(pStatusUpdate);
+        author.addStatusUpdate(pStatusUpdate);
 
         // update ego networks of status update author followers
-        updateEgoNetworks(nAuthor);
-
+        updateEgoNetworks(author.getNode());
         return pStatusUpdate.getIdentifier();
     }
 
