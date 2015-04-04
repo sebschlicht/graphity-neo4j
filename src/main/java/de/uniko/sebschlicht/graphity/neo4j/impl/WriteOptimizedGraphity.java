@@ -89,7 +89,7 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
 
     @Override
     protected StatusUpdateList readStatusUpdates(
-            Node nReader,
+            UserProxy reader,
             int numStatusUpdates) {
         StatusUpdateList statusUpdates = new StatusUpdateList();
         final TreeSet<UserPostIterator> postIterators =
@@ -98,7 +98,7 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
         // loop through users followed
         UserProxy pCrrUser;
         UserPostIterator userPostIterator;
-        for (Relationship relationship : nReader.getRelationships(
+        for (Relationship relationship : reader.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
             // add post iterator
             pCrrUser = new UserProxy(relationship.getEndNode());

@@ -221,7 +221,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
     @Override
     protected StatusUpdateList readStatusUpdates(
-            Node nReader,
+            UserProxy reader,
             int numStatusUpdates) {
         StatusUpdateList statusUpdates = new StatusUpdateList();
         final TreeSet<UserPostIterator> postIterators =
@@ -230,7 +230,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         // load first user by replica
         UserProxy pCrrUser = null;
         UserPostIterator userPostIterator;
-        Node nReplica = Walker.nextNode(nReader, EdgeType.GRAPHITY);
+        Node nReplica = Walker.nextNode(reader.getNode(), EdgeType.GRAPHITY);
         if (nReplica != null) {
             pCrrUser =
                     new UserProxy(Walker.nextNode(nReplica, EdgeType.REPLICA));

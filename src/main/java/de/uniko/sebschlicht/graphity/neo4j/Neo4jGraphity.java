@@ -208,8 +208,8 @@ public abstract class Neo4jGraphity extends Graphity {
                 long msCrr = System.currentTimeMillis();
                 addStatusUpdate(following, new StatusUpdate(sIdFollowing,
                         msCrr, "now follows " + sIdFollowed), tx);
-                addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
-                        "has new follower " + sIdFollowing), tx);
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed,
+                        msCrr + 1, "has new follower " + sIdFollowing), tx);
                 tx.success();
                 return true;
             }
@@ -253,10 +253,10 @@ public abstract class Neo4jGraphity extends Graphity {
 
             if (result) {
                 long msCrr = System.currentTimeMillis();
-                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
-                        msCrr, "did unfollow " + sIdFollowed), tx);
                 addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
                         "was unfollowed by " + sIdFollowing), tx);
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr + 1, "did unfollow " + sIdFollowed), tx);
                 tx.success();
                 return true;
             }
