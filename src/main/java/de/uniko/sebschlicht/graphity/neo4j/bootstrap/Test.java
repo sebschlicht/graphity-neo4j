@@ -3,13 +3,15 @@ package de.uniko.sebschlicht.graphity.neo4j.bootstrap;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 
+import de.uniko.sebschlicht.graphity.exception.IllegalUserIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownReaderIdException;
 import de.uniko.sebschlicht.graphity.neo4j.Neo4jGraphity;
 import de.uniko.sebschlicht.graphity.neo4j.impl.WriteOptimizedGraphity;
 
 public class Test {
 
-    public static void main(String[] args) throws UnknownReaderIdException {
+    public static void main(String[] args) throws IllegalUserIdException,
+            UnknownReaderIdException {
         final GraphDatabaseService graph =
                 new GraphDatabaseFactory().newEmbeddedDatabase(args[0]);
         Runtime.getRuntime().addShutdownHook(new Thread() {
