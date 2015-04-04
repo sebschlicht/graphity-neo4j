@@ -41,11 +41,11 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     @Override
     protected boolean addFollowship(UserProxy following, UserProxy followed) {
         // try to find the replica node of the user followed
-        Node followedReplica = null;
+        Node rFollowed = null;
         for (Relationship followship : following.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
-            followedReplica = followship.getEndNode();
-            if (Walker.nextNode(followedReplica, EdgeType.REPLICA).equals(
+            rFollowed = followship.getEndNode();
+            if (Walker.nextNode(rFollowed, EdgeType.REPLICA).equals(
                     followed.getNode())) {
                 // user is following already
                 return false;
@@ -65,16 +65,16 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             // search for insertion index within following replica layer
             final long followedTimestamp = getLastUpdateByReplica(newReplica);
             long crrTimestamp;
-            Node prevReplica = following.getNode();
-            Node nextReplica = null;
+            Node prev = following.getNode();
+            Node next = null;
             while (true) {
                 // get next user
-                nextReplica = Walker.nextNode(prevReplica, EdgeType.GRAPHITY);
-                if (nextReplica != null) {
-                    crrTimestamp = getLastUpdateByReplica(nextReplica);
+                next = Walker.nextNode(prev, EdgeType.GRAPHITY);
+                if (next != null) {
+                    crrTimestamp = getLastUpdateByReplica(next);
                     // step on if current user has newer status updates
                     if (crrTimestamp > followedTimestamp) {
-                        prevReplica = nextReplica;
+                        prev = next;
                         continue;
                     }
                 }
@@ -82,12 +82,12 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 break;
             }
             // insert followed user's replica into following's ego network
-            if (nextReplica != null) {
-                prevReplica.getSingleRelationship(EdgeType.GRAPHITY,
+            if (next != null) {
+                prev.getSingleRelationship(EdgeType.GRAPHITY,
                         Direction.OUTGOING).delete();
-                newReplica.createRelationshipTo(nextReplica, EdgeType.GRAPHITY);
+                newReplica.createRelationshipTo(next, EdgeType.GRAPHITY);
             }
-            prevReplica.createRelationshipTo(newReplica, EdgeType.GRAPHITY);
+            prev.createRelationshipTo(newReplica, EdgeType.GRAPHITY);
         }
         return true;
     }
@@ -95,13 +95,12 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     /**
      * remove a followed user from the replica layer
      * 
-     * @param followedReplica
+     * @param rFollowed
      *            replica of the user that will be removed
      */
-    private void removeFromReplicaLayer(final Node followedReplica) {
-        final Node prev =
-                Walker.previousNode(followedReplica, EdgeType.GRAPHITY);
-        final Node next = Walker.nextNode(followedReplica, EdgeType.GRAPHITY);
+    private void removeFromReplicaLayer(final Node rFollowed) {
+        final Node prev = Walker.previousNode(rFollowed, EdgeType.GRAPHITY);
+        final Node next = Walker.nextNode(rFollowed, EdgeType.GRAPHITY);
         // bridge the user replica in the replica layer
         prev.getSingleRelationship(EdgeType.GRAPHITY, Direction.OUTGOING)
                 .delete();
@@ -111,76 +110,69 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             prev.createRelationshipTo(next, EdgeType.GRAPHITY);
         }
         // remove the followship
-        followedReplica.getSingleRelationship(EdgeType.FOLLOWS,
-                Direction.INCOMING).delete();
+        rFollowed.getSingleRelationship(EdgeType.FOLLOWS, Direction.INCOMING)
+                .delete();
         // remove the replica node itself
-        followedReplica.getSingleRelationship(EdgeType.REPLICA,
-                Direction.OUTGOING).delete();
-        followedReplica.delete();
+        rFollowed.getSingleRelationship(EdgeType.REPLICA, Direction.OUTGOING)
+                .delete();
+        rFollowed.delete();
     }
 
     @Override
     protected boolean removeFollowship(UserProxy following, UserProxy followed) {
         // find the replica node of the user followed
-        Node followedReplica = null;
+        Node rFollowed = null;
         for (Relationship followship : following.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
-            followedReplica = followship.getEndNode();
-            if (Walker.nextNode(followedReplica, EdgeType.REPLICA).equals(
+            rFollowed = followship.getEndNode();
+            if (Walker.nextNode(rFollowed, EdgeType.REPLICA).equals(
                     followed.getNode())) {
                 break;
             }
-            followedReplica = null;
+            rFollowed = null;
         }
         // there is no such followship existing
-        if (followedReplica == null) {
+        if (rFollowed == null) {
             return false;
         }
-        removeFromReplicaLayer(followedReplica);
+        removeFromReplicaLayer(rFollowed);
         return true;
     }
 
     /**
      * update the ego networks of a user's followers
      * 
-     * @param user
+     * @param nUser
      *            user where changes have occurred
      */
-    private void updateEgoNetworks(final Node user) {
-        Node followedReplica, followingUser, lastPosterReplica;
-        Node prevReplica, nextReplica;
+    private void updateEgoNetworks(final Node nUser) {
+        Node rFollowed, following;
+        Node prev, next, last;
         // loop through followers
-        for (Relationship relationship : user.getRelationships(
+        for (Relationship relationship : nUser.getRelationships(
                 EdgeType.REPLICA, Direction.INCOMING)) {
             // load each replica and the user corresponding
-            followedReplica = relationship.getStartNode();
-            followingUser =
-                    Walker.previousNode(followedReplica, EdgeType.FOLLOWS);
+            rFollowed = relationship.getStartNode();
+            following = Walker.previousNode(rFollowed, EdgeType.FOLLOWS);
             // bridge user node
-            prevReplica =
-                    Walker.previousNode(followedReplica, EdgeType.GRAPHITY);
-            if (!prevReplica.equals(followingUser)) {
-                followedReplica.getSingleRelationship(EdgeType.GRAPHITY,
+            prev = Walker.previousNode(rFollowed, EdgeType.GRAPHITY);
+            if (!prev.equals(following)) {
+                rFollowed.getSingleRelationship(EdgeType.GRAPHITY,
                         Direction.INCOMING).delete();
-                nextReplica =
-                        Walker.nextNode(followedReplica, EdgeType.GRAPHITY);
-                if (nextReplica != null) {
-                    followedReplica.getSingleRelationship(EdgeType.GRAPHITY,
+                next = Walker.nextNode(rFollowed, EdgeType.GRAPHITY);
+                if (next != null) {
+                    rFollowed.getSingleRelationship(EdgeType.GRAPHITY,
                             Direction.OUTGOING).delete();
-                    prevReplica.createRelationshipTo(nextReplica,
-                            EdgeType.GRAPHITY);
+                    prev.createRelationshipTo(next, EdgeType.GRAPHITY);
                 }
             }
             // insert user's replica at its new position
-            lastPosterReplica =
-                    Walker.nextNode(followingUser, EdgeType.GRAPHITY);
-            if (!lastPosterReplica.equals(followedReplica)) {
-                followingUser.getSingleRelationship(EdgeType.GRAPHITY,
+            last = Walker.nextNode(following, EdgeType.GRAPHITY);
+            if (!last.equals(rFollowed)) {
+                following.getSingleRelationship(EdgeType.GRAPHITY,
                         Direction.OUTGOING).delete();
-                followingUser.createRelationshipTo(followedReplica,
-                        EdgeType.GRAPHITY);
-                followedReplica.createRelationshipTo(lastPosterReplica,
-                        EdgeType.GRAPHITY);
+                following.createRelationshipTo(rFollowed, EdgeType.GRAPHITY);
+                rFollowed.createRelationshipTo(last, EdgeType.GRAPHITY);
             }
         }
     }
