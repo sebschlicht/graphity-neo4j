@@ -37,21 +37,18 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
-    public boolean addFollowship(Node nFollowing, Node nFollowed) {
+    public boolean addFollowship(UserProxy following, UserProxy followed) {
         // try to find the node of the user followed
-        for (Relationship followship : nFollowing.getRelationships(
+        for (Relationship followship : following.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
-            if (followship.getEndNode().equals(nFollowed)) {
+            if (followship.getEndNode().equals(followed.getNode())) {
                 return false;
             }
         }
-        doAddFollowship(nFollowing, nFollowed);
-        return true;
-    }
-
-    public void doAddFollowship(Node nFollowing, Node nFollowed) {
         // create star topology
-        nFollowing.createRelationshipTo(nFollowed, EdgeType.FOLLOWS);
+        following.getNode().createRelationshipTo(followed.getNode(),
+                EdgeType.FOLLOWS);
+        return true;
     }
 
     @Override
