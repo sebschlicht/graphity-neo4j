@@ -94,29 +94,31 @@ public abstract class Neo4jGraphity extends Graphity {
         return null;
     }
 
-    /**
-     * Creates a user that can act in the social network.
-     * 
-     * @param userIdentifier
-     *            identifier of the new user
-     * @return user node - if the user was successfully created<br>
-     *         <b>null</b> - if the identifier is already in use
-     * @throws IllegalUserIdException
-     *             if the user identifier is invalid
-     */
-    public Node createUser(String userIdentifier) throws IllegalUserIdException {
+    protected long checkUserId(String userIdentifier)
+            throws IllegalUserIdException {
         try {
             long idUser = Long.valueOf(userIdentifier);
             if (idUser > 0) {
-                Node nUser = graphDb.createNode(NodeType.USER);
-                nUser.setProperty(UserProxy.PROP_IDENTIFIER, userIdentifier);
-                return nUser;
+                return idUser;
             }
         } catch (NumberFormatException e) {
             // exception thrown below
         }
         //TODO log exception reason (NaN/<=0)
         throw new IllegalUserIdException(userIdentifier);
+    }
+
+    /**
+     * Creates a user that can act in the social network.
+     * 
+     * @param userIdentifier
+     *            identifier of the new user
+     * @return user node
+     */
+    public Node createUser(long userIdentifier) {
+        Node nUser = graphDb.createNode(NodeType.USER);
+        nUser.setProperty(UserProxy.PROP_IDENTIFIER, userIdentifier);
+        return nUser;
     }
 
     /**
@@ -127,7 +129,7 @@ public abstract class Neo4jGraphity extends Graphity {
      * @return user node - if the user is existing in social network graph<br>
      *         <b>null</b> - if there is no node representing the user specified
      */
-    protected Node findUserNode(String userIdentifier) {
+    protected Node findUserNode(long userIdentifier) {
         try (ResourceIterator<Node> users =
                 graphDb.findNodesByLabelAndProperty(NodeType.USER,
                         UserProxy.PROP_IDENTIFIER, userIdentifier).iterator()) {
@@ -146,12 +148,14 @@ public abstract class Neo4jGraphity extends Graphity {
      * @return user proxy - if the user is existing<br>
      *         <b>null</b> if there is no user with the identifier specified
      */
-    protected UserProxy findUser(String userIdentifier) {
+    protected UserProxy findUser(long userIdentifier) {
         Node nUser = findUserNode(userIdentifier);
         if (nUser == null) {
             return null;
         }
-        return new UserProxy(nUser);
+        UserProxy user = new UserProxy(nUser);
+        user.cacheIdentifier(userIdentifier);
+        return user;
     }
 
     /**
@@ -159,96 +163,100 @@ public abstract class Neo4jGraphity extends Graphity {
      * 
      * @param userIdentifier
      *            identifier of the user to interact with
-     * @return user node - existing or created node representing the user
+     * @return user proxy - existing or created user node wrapped in a proxy
      * @throws IllegalUserIdException
-     *             if the user must be created and the identifier is invalid
+     *             if the user identifier is invalid
      */
-    protected Node loadUser(String userIdentifier)
+    protected UserProxy loadUser(long userIdentifier)
             throws IllegalUserIdException {
-        Node nUser = findUserNode(userIdentifier);
-        if (nUser != null) {
+        UserProxy user = findUser(userIdentifier);
+        if (user != null) {
             // user is already existing
-            return nUser;
+            return user;
         }
-        return createUser(userIdentifier);
+        user = new UserProxy(createUser(userIdentifier));
+        user.cacheIdentifier(userIdentifier);
+        return user;
     }
 
     @Override
     public boolean addUser(String userIdentifier) throws IllegalUserIdException {
-        Node nUser = findUserNode(userIdentifier);
+        long idUser = checkUserId(userIdentifier);
+        Node nUser = findUserNode(idUser);
         if (nUser == null) {
             // user identifier not in use yet
-            createUser(userIdentifier);
+            createUser(idUser);
             return true;
         }
         return false;
     }
 
     @Override
-    public boolean addFollowship(String idFollowing, String idFollowed)
+    public boolean addFollowship(String sIdFollowing, String sIdFollowed)
             throws IllegalUserIdException {
+        long idFollowing = checkUserId(sIdFollowing);
+        long idFollowed = checkUserId(sIdFollowed);
         try (Transaction tx = graphDb.beginTx()) {
-            if (addFollowship(idFollowing, idFollowed, tx)) {
+            UserProxy following = loadUser(idFollowing);
+            UserProxy followed = loadUser(idFollowed);
+
+            Lock[] locks = LockManager.lock(tx, following, followed);
+            boolean result = addFollowship(following, followed);
+            LockManager.releaseLocks(locks);
+
+            if (result) {
+                long msCrr = System.currentTimeMillis();
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr, "now follows " + sIdFollowed), tx);
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
+                        "has new follower " + sIdFollowing), tx);
                 tx.success();
                 return true;
             }
             return false;
         }
-    }
-
-    /**
-     * Adds a followship without committing.
-     * 
-     * @param idFollowing
-     * @param idFollowed
-     * @param tx
-     *            current graph transaction
-     * @return
-     * @throws IllegalUserIdException
-     */
-    public boolean addFollowship(
-            String idFollowing,
-            String idFollowed,
-            Transaction tx) throws IllegalUserIdException {
-        Node nFollowing = loadUser(idFollowing);
-        Node nFollowed = loadUser(idFollowed);
-
-        if (Long.valueOf(idFollowing) < Long.valueOf(idFollowed)) {
-            tx.acquireWriteLock(nFollowing);
-            tx.acquireWriteLock(nFollowed);
-        } else {
-            tx.acquireWriteLock(nFollowed);
-            tx.acquireWriteLock(nFollowing);
-        }
-
-        boolean result = addFollowship(nFollowing, nFollowed);
-        if (result) {
-            long msCrr = System.currentTimeMillis();
-            addStatusUpdate(nFollowing, new StatusUpdate(idFollowing, msCrr,
-                    "now follows " + idFollowed), tx);
-            addStatusUpdate(nFollowed, new StatusUpdate(idFollowed, msCrr,
-                    "has new follower " + idFollowing), tx);
-        }
-        return result;
     }
 
     /**
      * Adds a followship between two user nodes to the social network graph.
      * 
-     * @param nFollowing
-     *            node of the user that wants to follow another user
-     * @param nFollowed
-     *            node of the user that will be followed
+     * @param following
+     *            user that wants to follow another user
+     * @param followed
+     *            user that will be followed
      * @return true - if the followship was successfully created<br>
      *         false - if this followship is already existing
      */
-    abstract protected boolean addFollowship(Node nFollowing, Node nFollowed);
+    abstract protected boolean addFollowship(
+            UserProxy following,
+            UserProxy followed);
 
     @Override
-    public boolean removeFollowship(String idFollowing, String idFollowed)
-            throws UnknownFollowingIdException, UnknownFollowedIdException {
+    public boolean removeFollowship(String sIdFollowing, String sIdFollowed)
+            throws IllegalUserIdException, UnknownFollowingIdException,
+            UnknownFollowedIdException {
+        long idFollowing = checkUserId(sIdFollowing);
+        long idFollowed = checkUserId(sIdFollowed);
         try (Transaction tx = graphDb.beginTx()) {
-            if (removeFollowship(idFollowing, idFollowed, tx)) {
+            UserProxy following = findUser(idFollowing);
+            if (following == null) {
+                throw new UnknownFollowingIdException(sIdFollowing);
+            }
+            UserProxy followed = findUser(idFollowed);
+            if (followed == null) {
+                throw new UnknownFollowedIdException(sIdFollowed);
+            }
+
+            Lock[] locks = LockManager.lock(tx, following, followed);
+            boolean result = removeFollowship(following, followed);
+            LockManager.releaseLocks(locks);
+
+            if (result) {
+                long msCrr = System.currentTimeMillis();
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr, "did unfollow " + sIdFollowed), tx);
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
+                        "was unfollowed by " + sIdFollowing), tx);
                 tx.success();
                 return true;
             }
@@ -257,68 +265,30 @@ public abstract class Neo4jGraphity extends Graphity {
     }
 
     /**
-     * Removes a followship without committing.
+     * Removes a followship between two users from the social network graph.
      * 
-     * @param idFollowing
-     * @param idFollowed
-     * @param tx
-     *            current graph transaction
-     * @return
-     * @throws UnknownFollowingIdException
-     * @throws UnknownFollowedIdException
-     */
-    public boolean removeFollowship(
-            String idFollowing,
-            String idFollowed,
-            Transaction tx) throws UnknownFollowingIdException,
-            UnknownFollowedIdException {
-        UserProxy uFollowing = findUser(idFollowing);
-        if (uFollowing == null) {
-            throw new UnknownFollowingIdException(idFollowing);
-        }
-        UserProxy uFollowed = findUser(idFollowed);
-        if (uFollowed == null) {
-            throw new UnknownFollowedIdException(idFollowed);
-        }
-
-        Lock[] locks = LockManager.lock(tx, uFollowing, uFollowed);
-        boolean result = removeFollowship(uFollowing, uFollowed);
-        LockManager.releaseLocks(locks);
-
-        if (result) {
-            long msCrr = System.currentTimeMillis();
-            addStatusUpdate(uFollowing, new StatusUpdate(idFollowing, msCrr,
-                    "did unfollow " + idFollowed), tx);
-            addStatusUpdate(uFollowed, new StatusUpdate(idFollowed, msCrr,
-                    "was unfollowed by " + idFollowing), tx);
-        }
-        return result;
-    }
-
-    /**
-     * Removes a followship between two user nodes from the social network
-     * graph.
-     * 
-     * @param nFollowing
-     *            node of the user that wants to unfollow a user
-     * @param nFollowed
-     *            node of the user that will be unfollowed
+     * @param following
+     *            user that wants to unfollow a user
+     * @param followed
+     *            user that will be unfollowed
      * @return true - if the followship was successfully removed<br>
      *         false - if this followship is not existing
      */
-    abstract protected boolean
-        removeFollowship(Node nFollowing, Node nFollowed);
+    abstract protected boolean removeFollowship(
+            UserProxy following,
+            UserProxy followed);
 
     @Override
-    public long addStatusUpdate(String idAuthor, String message)
+    public long addStatusUpdate(String sIdAuthor, String message)
             throws IllegalUserIdException {
+        long idAuthor = checkUserId(sIdAuthor);
         try (Transaction tx = graphDb.beginTx()) {
-            Node nAuthor = loadUser(idAuthor);
+            UserProxy uAuthor = loadUser(idAuthor);
             StatusUpdate statusUpdate =
-                    new StatusUpdate(idAuthor, System.currentTimeMillis(),
+                    new StatusUpdate(sIdAuthor, System.currentTimeMillis(),
                             message);
 
-            long statusUpdateId = addStatusUpdate(nAuthor, statusUpdate, tx);
+            long statusUpdateId = addStatusUpdate(uAuthor, statusUpdate, tx);
             if (statusUpdateId != 0) {
                 tx.success();
             }
@@ -327,24 +297,23 @@ public abstract class Neo4jGraphity extends Graphity {
     }
 
     protected long addStatusUpdate(
-            Node nAuthor,
+            UserProxy uAuthor,
             StatusUpdate statusUpdate,
             Transaction tx) {
-        tx.acquireWriteLock(nAuthor);
-        return addStatusUpdate(nAuthor, statusUpdate);
+        return addStatusUpdate(uAuthor, statusUpdate);
     }
 
     /**
      * Adds a status update node to the social network.
      * 
-     * @param nAuthor
-     *            user node of the status update author
+     * @param uAuthor
+     *            status update author proxy
      * @param statusUpdate
      *            status update data
      * @return identifier of the status update node
      */
     abstract protected long addStatusUpdate(
-            Node nAuthor,
+            UserProxy uAuthor,
             StatusUpdate statusUpdate);
 
     @Override
