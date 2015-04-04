@@ -89,15 +89,15 @@ public class StatusUpdateProxy extends SocialNodeProxy {
 
     private void setIdentifier(long identifier) {
         this.identifier = identifier;
-        node.setProperty(PROP_IDENTIFIER, identifier);
+        _node.setProperty(PROP_IDENTIFIER, identifier);
     }
 
     public String getMessage() {
-        return (String) node.getProperty(PROP_MESSAGE);
+        return (String) _node.getProperty(PROP_MESSAGE);
     }
 
     public void setMessage(String message) {
-        node.setProperty(PROP_MESSAGE, message);
+        _node.setProperty(PROP_MESSAGE, message);
     }
 
     /**
@@ -106,18 +106,18 @@ public class StatusUpdateProxy extends SocialNodeProxy {
      */
     public long getPublished() {
         if (published == 0) {
-            published = (long) node.getProperty(PROP_PUBLISHED);
+            published = (long) _node.getProperty(PROP_PUBLISHED);
         }
         return published;
     }
 
     public void setPublished(long published) {
         this.published = published;
-        node.setProperty(PROP_PUBLISHED, published);
+        _node.setProperty(PROP_PUBLISHED, published);
     }
 
     public StatusUpdate getStatusUpdate() {
-        return new StatusUpdate(pAuthor.getIdentifier(), getPublished(),
-                getMessage());
+        return new StatusUpdate(String.valueOf(pAuthor.getIdentifier()),
+                getPublished(), getMessage());
     }
 }

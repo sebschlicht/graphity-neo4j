@@ -8,8 +8,8 @@ public class LockUserComparator implements Comparator<UserProxy> {
 
     @Override
     public int compare(UserProxy u1, UserProxy u2) {
-        long i1 = Long.valueOf(u1.getIdentifier());
-        long i2 = Long.valueOf(u2.getIdentifier());
+        long i1 = u1.getIdentifier();
+        long i2 = u2.getIdentifier();
         if (i1 < i2) {
             return -1;
         } else if (i1 > i2) {

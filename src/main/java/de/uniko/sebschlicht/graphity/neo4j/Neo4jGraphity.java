@@ -4,6 +4,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
+import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
@@ -263,15 +264,19 @@ public abstract class Neo4jGraphity extends Graphity {
             throw new UnknownFollowedIdException(idFollowed);
         }
 
+        Lock lFollowing, lFollowed;
         if (Long.valueOf(idFollowing) < Long.valueOf(idFollowed)) {
-            tx.acquireWriteLock(nFollowing);
-            tx.acquireWriteLock(nFollowed);
+            lFollowing = tx.acquireWriteLock(nFollowing);
+            lFollowed = tx.acquireWriteLock(nFollowed);
         } else {
-            tx.acquireWriteLock(nFollowed);
-            tx.acquireWriteLock(nFollowing);
+            lFollowed = tx.acquireWriteLock(nFollowed);
+            lFollowing = tx.acquireWriteLock(nFollowing);
         }
 
         boolean result = removeFollowship(nFollowing, nFollowed);
+        lFollowing.release();
+        lFollowed.release();
+
         if (result) {
             long msCrr = System.currentTimeMillis();
             addStatusUpdate(nFollowing, new StatusUpdate(idFollowing, msCrr,
