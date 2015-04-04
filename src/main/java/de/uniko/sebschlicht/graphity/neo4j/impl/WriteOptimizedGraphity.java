@@ -52,12 +52,12 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
-    public boolean removeFollowship(Node nFollowing, Node nFollowed) {
+    public boolean removeFollowship(UserProxy following, UserProxy followed) {
         // delete the followship if existing
         Relationship followship = null;
-        for (Relationship follows : nFollowing.getRelationships(
+        for (Relationship follows : following.getNode().getRelationships(
                 Direction.OUTGOING, EdgeType.FOLLOWS)) {
-            if (follows.getEndNode().equals(nFollowed)) {
+            if (follows.getEndNode().equals(followed.getNode())) {
                 followship = follows;
                 break;
             }

@@ -120,14 +120,14 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
-    protected boolean removeFollowship(Node nFollowing, Node nFollowed) {
+    protected boolean removeFollowship(UserProxy following, UserProxy followed) {
         // find the replica node of the user followed
         Node followedReplica = null;
-        for (Relationship followship : nFollowing.getRelationships(
+        for (Relationship followship : following.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
             followedReplica = followship.getEndNode();
             if (Walker.nextNode(followedReplica, EdgeType.REPLICA).equals(
-                    nFollowed)) {
+                    followed.getNode())) {
                 break;
             }
             followedReplica = null;
