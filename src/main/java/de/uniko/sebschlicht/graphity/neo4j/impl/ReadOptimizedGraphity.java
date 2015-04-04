@@ -206,6 +206,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         }
 
         return addStatusUpdate(nAuthor, statusUpdate);
+        //TODO release locks
     }
 
     @Override

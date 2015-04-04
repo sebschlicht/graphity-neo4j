@@ -15,6 +15,7 @@ import de.uniko.sebschlicht.graphity.exception.IllegalUserIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownFollowedIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownFollowingIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownReaderIdException;
+import de.uniko.sebschlicht.graphity.neo4j.impl.LockManager;
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 import de.uniko.sebschlicht.socialnet.StatusUpdate;
 import de.uniko.sebschlicht.socialnet.StatusUpdateList;
@@ -126,7 +127,7 @@ public abstract class Neo4jGraphity extends Graphity {
      * @return user node - if the user is existing in social network graph<br>
      *         <b>null</b> - if there is no node representing the user specified
      */
-    protected Node findUser(String userIdentifier) {
+    protected Node findUserNode(String userIdentifier) {
         try (ResourceIterator<Node> users =
                 graphDb.findNodesByLabelAndProperty(NodeType.USER,
                         UserProxy.PROP_IDENTIFIER, userIdentifier).iterator()) {
@@ -135,6 +136,22 @@ public abstract class Neo4jGraphity extends Graphity {
             }
         }
         return null;
+    }
+
+    /**
+     * Loads a user from the graph.
+     * 
+     * @param userIdentifier
+     *            identifier of the user
+     * @return user proxy - if the user is existing<br>
+     *         <b>null</b> if there is no user with the identifier specified
+     */
+    protected UserProxy findUser(String userIdentifier) {
+        Node nUser = findUserNode(userIdentifier);
+        if (nUser == null) {
+            return null;
+        }
+        return new UserProxy(nUser);
     }
 
     /**
@@ -148,7 +165,7 @@ public abstract class Neo4jGraphity extends Graphity {
      */
     protected Node loadUser(String userIdentifier)
             throws IllegalUserIdException {
-        Node nUser = findUser(userIdentifier);
+        Node nUser = findUserNode(userIdentifier);
         if (nUser != null) {
             // user is already existing
             return nUser;
@@ -158,7 +175,7 @@ public abstract class Neo4jGraphity extends Graphity {
 
     @Override
     public boolean addUser(String userIdentifier) throws IllegalUserIdException {
-        Node nUser = findUser(userIdentifier);
+        Node nUser = findUserNode(userIdentifier);
         if (nUser == null) {
             // user identifier not in use yet
             createUser(userIdentifier);
@@ -255,33 +272,24 @@ public abstract class Neo4jGraphity extends Graphity {
             String idFollowed,
             Transaction tx) throws UnknownFollowingIdException,
             UnknownFollowedIdException {
-        Node nFollowing = findUser(idFollowing);
-        if (nFollowing == null) {
+        UserProxy uFollowing = findUser(idFollowing);
+        if (uFollowing == null) {
             throw new UnknownFollowingIdException(idFollowing);
         }
-        Node nFollowed = findUser(idFollowed);
-        if (nFollowed == null) {
+        UserProxy uFollowed = findUser(idFollowed);
+        if (uFollowed == null) {
             throw new UnknownFollowedIdException(idFollowed);
         }
 
-        Lock lFollowing, lFollowed;
-        if (Long.valueOf(idFollowing) < Long.valueOf(idFollowed)) {
-            lFollowing = tx.acquireWriteLock(nFollowing);
-            lFollowed = tx.acquireWriteLock(nFollowed);
-        } else {
-            lFollowed = tx.acquireWriteLock(nFollowed);
-            lFollowing = tx.acquireWriteLock(nFollowing);
-        }
-
-        boolean result = removeFollowship(nFollowing, nFollowed);
-        lFollowing.release();
-        lFollowed.release();
+        Lock[] locks = LockManager.lock(tx, uFollowing, uFollowed);
+        boolean result = removeFollowship(uFollowing, uFollowed);
+        LockManager.releaseLocks(locks);
 
         if (result) {
             long msCrr = System.currentTimeMillis();
-            addStatusUpdate(nFollowing, new StatusUpdate(idFollowing, msCrr,
+            addStatusUpdate(uFollowing, new StatusUpdate(idFollowing, msCrr,
                     "did unfollow " + idFollowed), tx);
-            addStatusUpdate(nFollowed, new StatusUpdate(idFollowed, msCrr,
+            addStatusUpdate(uFollowed, new StatusUpdate(idFollowed, msCrr,
                     "was unfollowed by " + idFollowing), tx);
         }
         return result;
@@ -305,31 +313,17 @@ public abstract class Neo4jGraphity extends Graphity {
     public long addStatusUpdate(String idAuthor, String message)
             throws IllegalUserIdException {
         try (Transaction tx = graphDb.beginTx()) {
-            long statusUpdateId = addStatusUpdate(idAuthor, message, tx);
+            Node nAuthor = loadUser(idAuthor);
+            StatusUpdate statusUpdate =
+                    new StatusUpdate(idAuthor, System.currentTimeMillis(),
+                            message);
+
+            long statusUpdateId = addStatusUpdate(nAuthor, statusUpdate, tx);
             if (statusUpdateId != 0) {
                 tx.success();
             }
             return statusUpdateId;
         }
-    }
-
-    /**
-     * Adds a status update without committing.
-     * 
-     * @param idAuthor
-     * @param message
-     * @param tx
-     *            current graph transaction
-     * @return
-     * @throws IllegalUserIdException
-     */
-    public long
-        addStatusUpdate(String idAuthor, String message, Transaction tx)
-                throws IllegalUserIdException {
-        Node nAuthor = loadUser(idAuthor);
-        StatusUpdate statusUpdate =
-                new StatusUpdate(idAuthor, System.currentTimeMillis(), message);
-        return addStatusUpdate(nAuthor, statusUpdate, tx);
     }
 
     protected long addStatusUpdate(
@@ -378,7 +372,7 @@ public abstract class Neo4jGraphity extends Graphity {
             String idReader,
             int numStatusUpdates,
             Transaction tx) throws UnknownReaderIdException {
-        Node nReader = findUser(idReader);
+        Node nReader = findUserNode(idReader);
         if (nReader != null) {
             return readStatusUpdates(nReader, numStatusUpdates);
         }
