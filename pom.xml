@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>de.uniko.sebschlicht</groupId>
   <artifactId>graphity-neo4j</artifactId>
-  <version>0.2.0-SNAPSHOT</version>
+  <version>0.3.0-SNAPSHOT</version>
 
   <name>Graphity@Neo4j</name>
   <description>Graphity implementation using Neo4j.</description>

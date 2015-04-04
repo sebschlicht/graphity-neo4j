@@ -39,14 +39,14 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
-    protected boolean addFollowship(Node nFollowing, Node nFollowed) {
+    protected boolean addFollowship(UserProxy following, UserProxy followed) {
         // try to find the replica node of the user followed
         Node followedReplica = null;
-        for (Relationship followship : nFollowing.getRelationships(
+        for (Relationship followship : following.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
             followedReplica = followship.getEndNode();
             if (Walker.nextNode(followedReplica, EdgeType.REPLICA).equals(
-                    nFollowed)) {
+                    followed.getNode())) {
                 // user is following already
                 return false;
             }
@@ -54,17 +54,18 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
         // create replica
         final Node newReplica = graphDb.createNode();
-        nFollowing.createRelationshipTo(newReplica, EdgeType.FOLLOWS);
-        newReplica.createRelationshipTo(nFollowed, EdgeType.REPLICA);
+        following.getNode().createRelationshipTo(newReplica, EdgeType.FOLLOWS);
+        newReplica.createRelationshipTo(followed.getNode(), EdgeType.REPLICA);
 
         // check if followed user is the first in following's ego network
-        if (Walker.nextNode(nFollowing, EdgeType.GRAPHITY) == null) {
-            nFollowing.createRelationshipTo(newReplica, EdgeType.GRAPHITY);
+        if (Walker.nextNode(following.getNode(), EdgeType.GRAPHITY) == null) {
+            following.getNode().createRelationshipTo(newReplica,
+                    EdgeType.GRAPHITY);
         } else {
             // search for insertion index within following replica layer
             final long followedTimestamp = getLastUpdateByReplica(newReplica);
             long crrTimestamp;
-            Node prevReplica = nFollowing;
+            Node prevReplica = following.getNode();
             Node nextReplica = null;
             while (true) {
                 // get next user
