@@ -5,8 +5,10 @@ import java.util.TreeSet;
 
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
@@ -70,6 +72,20 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
 
         followship.delete();
         return true;
+    }
+
+    @Override
+    protected long addStatusUpdate(
+            UserProxy author,
+            StatusUpdate statusUpdate,
+            Transaction tx) {
+        // lock user
+        Lock lock = LockManager.lock(tx, author);
+        try {
+            return addStatusUpdate(author, statusUpdate);
+        } finally {
+            lock.release();
+        }
     }
 
     @Override

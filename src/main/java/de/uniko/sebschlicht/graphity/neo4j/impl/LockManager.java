@@ -20,6 +20,20 @@ public class LockManager {
             new HashMap<>();
 
     /**
+     * Locks a user.<br>
+     * What actually is locked, is the user node.
+     * 
+     * @param tx
+     *            current transaction
+     * @param user
+     *            user that has to be locked
+     * @return lock acquired from the transaction
+     */
+    public static Lock lock(Transaction tx, UserProxy user) {
+        return tx.acquireWriteLock(user.getNode());
+    }
+
+    /**
      * Locks two users.<br>
      * What actually is locked, is the user node.<br>
      * The locks returned can be released via {@link #releaseLocks(Lock[])}.
@@ -50,7 +64,7 @@ public class LockManager {
      * Locks a collection of users.<br>
      * What actually is locked, is the user node.<br>
      * The locks are registered to the current transaction and can be released
-     * via this manager using {@link #releaseLocks(Transaction)}.
+     * using {@link #releaseLocks(Transaction)}.
      * 
      * @param tx
      *            current transaction

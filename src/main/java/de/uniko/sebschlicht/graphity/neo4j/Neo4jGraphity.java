@@ -296,12 +296,10 @@ public abstract class Neo4jGraphity extends Graphity {
         }
     }
 
-    protected long addStatusUpdate(
+    abstract protected long addStatusUpdate(
             UserProxy uAuthor,
             StatusUpdate statusUpdate,
-            Transaction tx) {
-        return addStatusUpdate(uAuthor, statusUpdate);
-    }
+            Transaction tx);
 
     /**
      * Adds a status update node to the social network.
