@@ -7,6 +7,7 @@ import java.util.TreeSet;
 
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -194,11 +195,11 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
             replicaLayer.add(new UserProxy(following));
         }
-        LockManager.lock(tx, replicaLayer);
+        List<Lock> locks = LockManager.lock(tx, replicaLayer);
         try {
             return addStatusUpdate(author, statusUpdate);
         } finally {
-            LockManager.releaseLocks(tx);
+            LockManager.releaseLocks(locks);
         }
     }
 

@@ -1,9 +1,8 @@
 package de.uniko.sebschlicht.graphity.neo4j.impl;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.Map;
+import java.util.List;
 import java.util.TreeSet;
 
 import org.neo4j.graphdb.Lock;
@@ -12,12 +11,6 @@ import org.neo4j.graphdb.Transaction;
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 
 public class LockManager {
-
-    /**
-     * holds open locks of a transaction
-     */
-    protected static Map<Transaction, LinkedList<Lock>> _LOCKS =
-            new HashMap<>();
 
     /**
      * Locks a user.<br>
@@ -63,29 +56,26 @@ public class LockManager {
     /**
      * Locks a collection of users.<br>
      * What actually is locked, is the user node.<br>
-     * The locks are registered to the current transaction and can be released
-     * using {@link #releaseLocks(Transaction)}.
+     * The locks can be released using {@link #releaseLocks(List)}.
      * 
      * @param tx
      *            current transaction
      * @param users
      *            users that should be locked
+     * @return list with all user locks, has to be released from first to last
      */
-    public static void lock(Transaction tx, Collection<UserProxy> users) {
+    public static List<Lock> lock(Transaction tx, Collection<UserProxy> users) {
         TreeSet<UserProxy> userSet = new TreeSet<>(new LockUserComparator());
         for (UserProxy user : users) {
             userSet.add(user);
         }
 
-        LinkedList<Lock> locks = _LOCKS.get(tx);
-        if (locks == null) {
-            locks = new LinkedList<>();
-            _LOCKS.put(tx, locks);
-        }
+        LinkedList<Lock> locks = new LinkedList<>();
         for (UserProxy user : userSet) {
             Lock lock = tx.acquireWriteLock(user.getNode());
-            locks.addLast(lock);
+            locks.addFirst(lock);
         }
+        return locks;
     }
 
     /**
@@ -101,13 +91,12 @@ public class LockManager {
     }
 
     /**
-     * Releases all locks registered to a transaction.
+     * Releases all locks in a list from first to last.
      * 
-     * @param tx
-     *            transaction with open locks
+     * @param locks
+     *            list of user locks
      */
-    public static void releaseLocks(Transaction tx) {
-        LinkedList<Lock> locks = _LOCKS.remove(tx);
+    public static void releaseLocks(List<Lock> locks) {
         if (locks == null) {
             return;
         }
@@ -115,6 +104,5 @@ public class LockManager {
             lock.release();
         }
         locks.clear();
-        locks = null;
     }
 }
