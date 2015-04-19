@@ -247,9 +247,7 @@ public abstract class Neo4jGraphity extends Graphity {
             Lock[] locks = LockManager.lock(tx, following, followed);
             boolean result = removeFollowship(following, followed);
             LockManager.releaseLocks(locks);
-            System.out.println(tx + ": locking manager released ["
-                    + following.getIdentifier() + ", "
-                    + followed.getIdentifier());
+
             if (!result) {
                 return false;
             }
