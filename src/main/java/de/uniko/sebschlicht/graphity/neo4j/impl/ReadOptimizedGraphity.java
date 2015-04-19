@@ -62,7 +62,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             tx.success();
         }
         addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
-        addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
+        //addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
         return true;
     }
 
@@ -181,7 +181,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             tx.success();
         }
         addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
-        addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
+        //addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
         return true;
     }
 
