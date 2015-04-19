@@ -14,6 +14,8 @@ import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 
 import de.uniko.sebschlicht.graphity.exception.IllegalUserIdException;
+import de.uniko.sebschlicht.graphity.exception.UnknownFollowedIdException;
+import de.uniko.sebschlicht.graphity.exception.UnknownFollowingIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownReaderIdException;
 import de.uniko.sebschlicht.graphity.neo4j.EdgeType;
 import de.uniko.sebschlicht.graphity.neo4j.Neo4jGraphity;
@@ -39,6 +41,32 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
+    public boolean addFollowship(String sIdFollowing, String sIdFollowed)
+            throws IllegalUserIdException {
+        long idFollowing = checkUserId(sIdFollowing);
+        long idFollowed = checkUserId(sIdFollowed);
+        try (Transaction tx = graphDb.beginTx()) {
+            UserProxy following = loadUser(idFollowing);
+            UserProxy followed = loadUser(idFollowed);
+
+            Lock[] locks = LockManager.lock(tx, following, followed);
+            boolean result = addFollowship(following, followed);
+            LockManager.releaseLocks(locks);
+
+            if (result) {
+                long msCrr = System.currentTimeMillis();
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr, "now follows " + sIdFollowed), tx);
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed,
+                        msCrr + 1, "has new follower " + sIdFollowing), tx);
+                tx.success();
+                return true;
+            }
+            return false;
+        }
+    }
+
+    @Override
     public boolean addFollowship(UserProxy following, UserProxy followed) {
         // try to find the node of the user followed
         for (Relationship followship : following.getNode().getRelationships(
@@ -51,6 +79,39 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
         following.getNode().createRelationshipTo(followed.getNode(),
                 EdgeType.FOLLOWS);
         return true;
+    }
+
+    @Override
+    public boolean removeFollowship(String sIdFollowing, String sIdFollowed)
+            throws IllegalUserIdException, UnknownFollowingIdException,
+            UnknownFollowedIdException {
+        long idFollowing = checkUserId(sIdFollowing);
+        long idFollowed = checkUserId(sIdFollowed);
+        try (Transaction tx = graphDb.beginTx()) {
+            UserProxy following = findUser(idFollowing);
+            if (following == null) {
+                throw new UnknownFollowingIdException(sIdFollowing);
+            }
+            UserProxy followed = findUser(idFollowed);
+            if (followed == null) {
+                throw new UnknownFollowedIdException(sIdFollowed);
+            }
+
+            Lock[] locks = LockManager.lock(tx, following, followed);
+            boolean result = removeFollowship(following, followed);
+            LockManager.releaseLocks(locks);
+
+            if (result) {
+                long msCrr = System.currentTimeMillis();
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
+                        "was unfollowed by " + sIdFollowing), tx);
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr + 1, "did unfollow " + sIdFollowed), tx);
+                tx.success();
+                return true;
+            }
+            return false;
+        }
     }
 
     @Override

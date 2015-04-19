@@ -4,7 +4,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
-import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.graphdb.Transaction;
@@ -15,7 +14,6 @@ import de.uniko.sebschlicht.graphity.exception.IllegalUserIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownFollowedIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownFollowingIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownReaderIdException;
-import de.uniko.sebschlicht.graphity.neo4j.impl.LockManager;
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 import de.uniko.sebschlicht.socialnet.StatusUpdate;
 import de.uniko.sebschlicht.socialnet.StatusUpdateList;
@@ -192,30 +190,9 @@ public abstract class Neo4jGraphity extends Graphity {
     }
 
     @Override
-    public boolean addFollowship(String sIdFollowing, String sIdFollowed)
-            throws IllegalUserIdException {
-        long idFollowing = checkUserId(sIdFollowing);
-        long idFollowed = checkUserId(sIdFollowed);
-        try (Transaction tx = graphDb.beginTx()) {
-            UserProxy following = loadUser(idFollowing);
-            UserProxy followed = loadUser(idFollowed);
-
-            Lock[] locks = LockManager.lock(tx, following, followed);
-            boolean result = addFollowship(following, followed);
-            LockManager.releaseLocks(locks);
-
-            if (result) {
-                long msCrr = System.currentTimeMillis();
-                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
-                        msCrr, "now follows " + sIdFollowed), tx);
-                addStatusUpdate(followed, new StatusUpdate(sIdFollowed,
-                        msCrr + 1, "has new follower " + sIdFollowing), tx);
-                tx.success();
-                return true;
-            }
-            return false;
-        }
-    }
+    abstract public boolean addFollowship(
+            String sIdFollowing,
+            String sIdFollowed) throws IllegalUserIdException;
 
     /**
      * Adds a followship between two user nodes to the social network graph.
@@ -232,37 +209,10 @@ public abstract class Neo4jGraphity extends Graphity {
             UserProxy followed);
 
     @Override
-    public boolean removeFollowship(String sIdFollowing, String sIdFollowed)
-            throws IllegalUserIdException, UnknownFollowingIdException,
-            UnknownFollowedIdException {
-        long idFollowing = checkUserId(sIdFollowing);
-        long idFollowed = checkUserId(sIdFollowed);
-        try (Transaction tx = graphDb.beginTx()) {
-            UserProxy following = findUser(idFollowing);
-            if (following == null) {
-                throw new UnknownFollowingIdException(sIdFollowing);
-            }
-            UserProxy followed = findUser(idFollowed);
-            if (followed == null) {
-                throw new UnknownFollowedIdException(sIdFollowed);
-            }
-
-            Lock[] locks = LockManager.lock(tx, following, followed);
-            boolean result = removeFollowship(following, followed);
-            LockManager.releaseLocks(locks);
-
-            if (result) {
-                long msCrr = System.currentTimeMillis();
-                addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
-                        "was unfollowed by " + sIdFollowing), tx);
-                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
-                        msCrr + 1, "did unfollow " + sIdFollowed), tx);
-                tx.success();
-                return true;
-            }
-            return false;
-        }
-    }
+    abstract public boolean removeFollowship(
+            String sIdFollowing,
+            String sIdFollowed) throws IllegalUserIdException,
+            UnknownFollowingIdException, UnknownFollowedIdException;
 
     /**
      * Removes a followship between two users from the social network graph.
