@@ -7,6 +7,7 @@ import java.util.TreeSet;
 
 import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.DeadlockDetectedException;
 
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 
@@ -46,9 +47,15 @@ public class LockManager {
         if (user1.getIdentifier() <= user2.getIdentifier()) {
             locks[0] = tx.acquireWriteLock(user1.getNode());
             locks[1] = tx.acquireWriteLock(user2.getNode());
+            System.out.println(tx + ": locking manager locked ["
+                    + user1.getNode() + " (" + user1.getIdentifier() + "), "
+                    + user2.getNode() + " (" + user2.getIdentifier() + ")]");
         } else {
             locks[0] = tx.acquireWriteLock(user2.getNode());
             locks[1] = tx.acquireWriteLock(user1.getNode());
+            System.out.println(tx + ": locking manager locked ["
+                    + user2.getNode() + " (" + user2.getIdentifier() + "), "
+                    + user1.getNode() + " (" + user1.getIdentifier() + ")]");
         }
         return locks;
     }
@@ -70,11 +77,26 @@ public class LockManager {
             userSet.add(user);
         }
 
+        StringBuilder debug = new StringBuilder();
+        debug.append(tx);
+        debug.append(": locking manager locked [");
         LinkedList<Lock> locks = new LinkedList<>();
         for (UserProxy user : userSet) {
-            Lock lock = tx.acquireWriteLock(user.getNode());
+            debug.append(user.getNode());
+            debug.append(" (");
+            debug.append(user.getIdentifier());
+            debug.append(")");
+            Lock lock;
+            try {
+                lock = tx.acquireWriteLock(user.getNode());
+            } catch (DeadlockDetectedException e) {
+                System.err.println(debug.toString());
+                throw e;
+            }
+            debug.append(",");
             locks.addFirst(lock);
         }
+        debug.append("]");
         return locks;
     }
 

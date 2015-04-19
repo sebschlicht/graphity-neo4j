@@ -56,43 +56,52 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         }
 
         // create replica
-        final Node newReplica = graphDb.createNode();
-        following.getNode().createRelationshipTo(newReplica, EdgeType.FOLLOWS);
-        newReplica.createRelationshipTo(followed.getNode(), EdgeType.REPLICA);
+        rFollowed = graphDb.createNode();
+        rFollowed.createRelationshipTo(followed.getNode(), EdgeType.REPLICA);
+        following.getNode().createRelationshipTo(rFollowed, EdgeType.FOLLOWS);
 
-        // check if followed user is the first in following's ego network
-        if (Walker.nextNode(following.getNode(), EdgeType.GRAPHITY) == null) {
-            following.getNode().createRelationshipTo(newReplica,
-                    EdgeType.GRAPHITY);
-        } else {
-            // search for insertion index within following replica layer
-            final long followedTimestamp = getLastUpdateByReplica(newReplica);
-            long crrTimestamp;
-            Node prev = following.getNode();
-            Node next = null;
-            while (true) {
-                // get next user
-                next = Walker.nextNode(prev, EdgeType.GRAPHITY);
-                if (next != null) {
-                    crrTimestamp = getLastUpdateByReplica(next);
-                    // step on if current user has newer status updates
-                    if (crrTimestamp > followedTimestamp) {
-                        prev = next;
-                        continue;
-                    }
-                }
-                // insertion position has been found
-                break;
-            }
-            // insert followed user's replica into following's ego network
-            if (next != null) {
-                prev.getSingleRelationship(EdgeType.GRAPHITY,
-                        Direction.OUTGOING).delete();
-                newReplica.createRelationshipTo(next, EdgeType.GRAPHITY);
-            }
-            prev.createRelationshipTo(newReplica, EdgeType.GRAPHITY);
-        }
+        // insert the replica into the replica layer of the user following
+        insertIntoReplicaLayer(following.getNode(), rFollowed);
         return true;
+    }
+
+    /**
+     * Inserts a replica node in the replica layer of a user.<br>
+     * After the insertion the replica node will have the correct position in
+     * the replica layer of the user, according to the Graphity index.
+     * 
+     * @param nFollowing
+     *            user node
+     * @param rFollowed
+     *            replica node
+     */
+    protected void insertIntoReplicaLayer(Node nFollowing, Node rFollowed) {
+        Node prev = nFollowing;
+        Node next = null;
+        long insertionTimestamp = getLastUpdateByReplica(rFollowed);
+        long timestamp;
+        do {
+            next = Walker.nextNode(prev, EdgeType.GRAPHITY);
+            if (next != null) {
+                timestamp = getLastUpdateByReplica(next);
+                if (timestamp > insertionTimestamp) {
+                    // current user has more recent news items, step on
+                    prev = next;
+                    continue;
+                }
+            }
+            // no next replica or less recent news items -> insertion position found
+            break;
+        } while (next != null);
+
+        // if there is a tail, connect it to the new replica
+        if (next != null) {
+            prev.getSingleRelationship(EdgeType.GRAPHITY, Direction.OUTGOING)
+                    .delete();
+            rFollowed.createRelationshipTo(next, EdgeType.GRAPHITY);
+        }
+        // connect the new replica to the index head (user or replica with more recent news items)
+        prev.createRelationshipTo(rFollowed, EdgeType.GRAPHITY);
     }
 
     /**
