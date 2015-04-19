@@ -16,6 +16,8 @@ import org.neo4j.graphdb.factory.GraphDatabaseFactory;
 import org.neo4j.graphdb.factory.GraphDatabaseSettings;
 
 import de.uniko.sebschlicht.graphity.exception.IllegalUserIdException;
+import de.uniko.sebschlicht.graphity.exception.UnknownFollowedIdException;
+import de.uniko.sebschlicht.graphity.exception.UnknownFollowingIdException;
 import de.uniko.sebschlicht.graphity.exception.UnknownReaderIdException;
 import de.uniko.sebschlicht.graphity.neo4j.EdgeType;
 import de.uniko.sebschlicht.graphity.neo4j.Neo4jGraphity;
@@ -39,6 +41,29 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     public ReadOptimizedGraphity(
             GraphDatabaseService graphDb) {
         super(graphDb);
+    }
+
+    @Override
+    public boolean addFollowship(String sIdFollowing, String sIdFollowed)
+            throws IllegalUserIdException {
+        long idFollowing = checkUserId(sIdFollowing);
+        long idFollowed = checkUserId(sIdFollowed);
+        try (Transaction tx = graphDb.beginTx()) {
+            UserProxy following = loadUser(idFollowing);
+            UserProxy followed = loadUser(idFollowed);
+
+            Lock[] locks = LockManager.lock(tx, following, followed);
+            boolean result = addFollowship(following, followed);
+            LockManager.releaseLocks(locks);
+
+            if (!result) {
+                return false;
+            }
+            tx.success();
+        }
+        addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
+        addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
+        return true;
     }
 
     @Override
@@ -128,6 +153,36 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         rFollowed.getSingleRelationship(EdgeType.REPLICA, Direction.OUTGOING)
                 .delete();
         rFollowed.delete();
+    }
+
+    @Override
+    public boolean removeFollowship(String sIdFollowing, String sIdFollowed)
+            throws IllegalUserIdException, UnknownFollowingIdException,
+            UnknownFollowedIdException {
+        long idFollowing = checkUserId(sIdFollowing);
+        long idFollowed = checkUserId(sIdFollowed);
+        try (Transaction tx = graphDb.beginTx()) {
+            UserProxy following = findUser(idFollowing);
+            if (following == null) {
+                throw new UnknownFollowingIdException(sIdFollowing);
+            }
+            UserProxy followed = findUser(idFollowed);
+            if (followed == null) {
+                throw new UnknownFollowedIdException(sIdFollowed);
+            }
+
+            Lock[] locks = LockManager.lock(tx, following, followed);
+            boolean result = removeFollowship(following, followed);
+            LockManager.releaseLocks(locks);
+
+            if (!result) {
+                return false;
+            }
+            tx.success();
+        }
+        addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
+        addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
+        return true;
     }
 
     @Override

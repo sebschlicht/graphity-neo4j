@@ -204,14 +204,17 @@ public abstract class Neo4jGraphity extends Graphity {
             boolean result = addFollowship(following, followed);
             LockManager.releaseLocks(locks);
 
-            if (!result) {
-                return false;
+            if (result) {
+                long msCrr = System.currentTimeMillis();
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr, "now follows " + sIdFollowed), tx);
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed,
+                        msCrr + 1, "has new follower " + sIdFollowing), tx);
+                tx.success();
+                return true;
             }
-            tx.success();
+            return false;
         }
-        addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
-        addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
-        return true;
     }
 
     /**
@@ -248,14 +251,17 @@ public abstract class Neo4jGraphity extends Graphity {
             boolean result = removeFollowship(following, followed);
             LockManager.releaseLocks(locks);
 
-            if (!result) {
-                return false;
+            if (result) {
+                long msCrr = System.currentTimeMillis();
+                addStatusUpdate(followed, new StatusUpdate(sIdFollowed, msCrr,
+                        "was unfollowed by " + sIdFollowing), tx);
+                addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+                        msCrr + 1, "did unfollow " + sIdFollowed), tx);
+                tx.success();
+                return true;
             }
-            tx.success();
+            return false;
         }
-        addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
-        addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
-        return true;
     }
 
     /**
