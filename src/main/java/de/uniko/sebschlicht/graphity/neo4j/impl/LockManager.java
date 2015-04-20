@@ -7,6 +7,7 @@ import java.util.TreeSet;
 
 import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Transaction;
+import org.neo4j.kernel.DeadlockDetectedException;
 
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 
@@ -72,8 +73,24 @@ public class LockManager {
 
         LinkedList<Lock> locks = new LinkedList<>();
         for (UserProxy user : userSet) {
-            Lock lock = tx.acquireWriteLock(user.getNode());
-            locks.addFirst(lock);
+            try {
+                Lock lock = tx.acquireWriteLock(user.getNode());
+                locks.addFirst(lock);
+            } catch (DeadlockDetectedException e) {
+                StringBuilder message = new StringBuilder();
+                message.append("failed to lock user ");
+                message.append(user.getIdentifier());
+                message.append(" when locking [");
+                int i = 0;
+                for (UserProxy eUser : userSet) {
+                    message.append(eUser.getIdentifier());
+                    if (i++ < userSet.size()) {
+                        message.append(", ");
+                    }
+                }
+                message.append("]!");
+                throw new IllegalStateException(message.toString(), e);
+            }
         }
         return locks;
     }
