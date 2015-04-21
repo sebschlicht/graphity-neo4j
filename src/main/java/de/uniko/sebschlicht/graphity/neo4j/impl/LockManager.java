@@ -38,7 +38,7 @@ public class LockManager {
                         System.out.println(lock + ": waiting for " + prevLock
                                 + " to lock " + user.getIdentifier() + "...");
                         // wait until previous lock released
-                        prevLock.await(0);
+                        prevLock.await(100);
                         System.out.println(lock + ": retry to lock "
                                 + user.getIdentifier() + "...");
                     }
