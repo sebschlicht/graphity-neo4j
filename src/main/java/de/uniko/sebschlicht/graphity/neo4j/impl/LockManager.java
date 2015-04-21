@@ -1,125 +1,142 @@
 package de.uniko.sebschlicht.graphity.neo4j.impl;
 
 import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.TreeSet;
-
-import org.neo4j.graphdb.Lock;
-import org.neo4j.graphdb.Transaction;
-import org.neo4j.kernel.DeadlockDetectedException;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
 
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 
 public class LockManager {
 
+    protected static ConcurrentMap<Long, UserLock> LOCKS;
+
+    protected static Queue<UserLock> UNUSED_LOCKS;
+
+    static {
+        LOCKS = new ConcurrentHashMap<>();
+        UNUSED_LOCKS = new ConcurrentLinkedQueue<>();
+    }
+
+    protected static void lock(UserLock lock) {
+        UserLock prevLock;
+        StringBuilder message = new StringBuilder();
+        message.append(lock);
+        message.append(": locking [");
+        for (UserProxy user : lock.getUsers()) {
+            message.append(user.getIdentifier());
+            message.append(",");
+        }
+        message.append("]");
+        System.out.println(message.toString());
+        try {
+            for (UserProxy user : lock.getUsers()) {
+                do {
+                    prevLock = LOCKS.putIfAbsent(user.getIdentifier(), lock);
+                    if (prevLock != null) {
+                        System.out.println(lock + ": waiting for " + prevLock
+                                + " to lock " + user.getIdentifier() + "...");
+                        // wait until previous lock released
+                        prevLock.await(0);
+                        System.out.println(lock + ": retry to lock "
+                                + user.getIdentifier() + "...");
+                    }
+                } while (prevLock != null);
+                // user successfully locked
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println(lock + ": locked.");
+    }
+
+    protected static UserLock getLock() {
+        UserLock lock = UNUSED_LOCKS.poll();
+        if (lock != null) {
+            return lock;
+        }
+        return new UserLock();
+    }
+
     /**
      * Locks a user.<br>
      * What actually is locked, is the user node.
+     * The lock can be released via {@link #releaseLock(UserLock)}.
      * 
-     * @param tx
-     *            current transaction
      * @param user
      *            user that has to be locked
-     * @return lock acquired from the transaction
+     * @return lock acquired
      */
-    public static Lock lock(Transaction tx, UserProxy user) {
-        return tx.acquireWriteLock(user.getNode());
+    public static UserLock lock(UserProxy user) {
+        // create lock container
+        UserLock lock = getLock();
+        lock.add(user);
+        // lock the user
+        lock(lock);
+        return lock;
     }
 
     /**
      * Locks two users.<br>
      * What actually is locked, is the user node.<br>
-     * The locks returned can be released via {@link #releaseLocks(Lock[])}.
+     * The lock can be released via {@link #releaseLock(UserLock)}.
      * 
-     * @param tx
-     *            current transaction
      * @param user1
      *            one user
      * @param user2
      *            a second user
-     * @return Array with two locks, where the elements are sorted DESC by the
-     *         user's identifier. The locks have to be released from the last to
-     *         the first array position.
+     * @return lock acquired for both users
      */
-    public static Lock[] lock(Transaction tx, UserProxy user1, UserProxy user2) {
-        Lock[] locks = new Lock[2];
-        if (user1.getIdentifier() <= user2.getIdentifier()) {
-            locks[0] = tx.acquireWriteLock(user1.getNode());
-            locks[1] = tx.acquireWriteLock(user2.getNode());
-        } else {
-            locks[0] = tx.acquireWriteLock(user2.getNode());
-            locks[1] = tx.acquireWriteLock(user1.getNode());
-        }
-        return locks;
+    public static UserLock lock(UserProxy user1, UserProxy user2) {
+        // create lock container
+        UserLock lock = getLock();
+        lock.add(user1);
+        lock.add(user2);
+        // lock the users
+        lock(lock);
+        return lock;
     }
 
     /**
      * Locks a collection of users.<br>
      * What actually is locked, is the user node.<br>
-     * The locks can be released using {@link #releaseLocks(List)}.
+     * The lock can be released via {@link #releaseLock(UserLock)}.
      * 
-     * @param tx
-     *            current transaction
      * @param users
      *            users that should be locked
-     * @return list with all user locks, has to be released from first to last
+     * @return lock acquired for all the users
      */
-    public static List<Lock> lock(Transaction tx, Collection<UserProxy> users) {
-        TreeSet<UserProxy> userSet = new TreeSet<>(new LockUserComparator());
+    public static UserLock lock(Collection<UserProxy> users) {
+        // create lock container
+        UserLock lock = getLock();
         for (UserProxy user : users) {
-            userSet.add(user);
+            lock.add(user);
         }
-
-        LinkedList<Lock> locks = new LinkedList<>();
-        for (UserProxy user : userSet) {
-            try {
-                Lock lock = tx.acquireWriteLock(user.getNode());
-                locks.addFirst(lock);
-            } catch (DeadlockDetectedException e) {
-                StringBuilder message = new StringBuilder();
-                message.append("failed to lock user ");
-                message.append(user.getIdentifier());
-                message.append(" when locking [");
-                int i = 0;
-                for (UserProxy eUser : userSet) {
-                    message.append(eUser.getIdentifier());
-                    if (i++ < userSet.size()) {
-                        message.append(", ");
-                    }
-                }
-                message.append("]!");
-                throw new IllegalStateException(message.toString(), e);
-            }
-        }
-        return locks;
+        // lock the users
+        lock(lock);
+        return lock;
     }
 
     /**
-     * Releases an array with two locks. Locks will be released from the last to
-     * the first array position.
+     * Releases a lock.<br>
+     * Unregisters locks of all users involved and notifies awaiting threads.
      * 
-     * @param locks
-     *            array with locks of length 2
+     * @param lock
+     *            lock to release
      */
-    public static void releaseLocks(Lock[] locks) {
-        locks[1].release();
-        locks[0].release();
-    }
-
-    /**
-     * Releases all locks in a list from first to last.
-     * 
-     * @param locks
-     *            list of user locks
-     */
-    public static void releaseLocks(List<Lock> locks) {
-        if (locks == null) {
-            return;
+    public static void releaseLock(UserLock lock) {
+        StringBuilder message = new StringBuilder();
+        message.append(lock);
+        message.append(": [");
+        for (UserProxy user : lock.getUsers()) {
+            LOCKS.remove(user.getIdentifier());
+            message.append(user.getIdentifier());
+            message.append(",");
         }
-        for (Lock lock : locks) {
-            lock.release();
-        }
-        locks.clear();
+        message.append("] released.");
+        lock.release();
+        System.out.println(message.toString());
+        UNUSED_LOCKS.add(lock);
     }
 }

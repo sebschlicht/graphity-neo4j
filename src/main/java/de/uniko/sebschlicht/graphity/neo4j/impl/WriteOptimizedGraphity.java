@@ -5,7 +5,6 @@ import java.util.TreeSet;
 
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -49,9 +48,9 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
             UserProxy following = loadUser(idFollowing);
             UserProxy followed = loadUser(idFollowed);
 
-            Lock[] locks = LockManager.lock(tx, following, followed);
+            UserLock lock = LockManager.lock(following, followed);
             boolean result = addFollowship(following, followed);
-            LockManager.releaseLocks(locks);
+            LockManager.releaseLock(lock);
 
             if (result) {
                 long msCrr = System.currentTimeMillis();
@@ -97,9 +96,9 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
                 throw new UnknownFollowedIdException(sIdFollowed);
             }
 
-            Lock[] locks = LockManager.lock(tx, following, followed);
+            UserLock lock = LockManager.lock(following, followed);
             boolean result = removeFollowship(following, followed);
-            LockManager.releaseLocks(locks);
+            LockManager.releaseLock(lock);
 
             if (result) {
                 long msCrr = System.currentTimeMillis();
@@ -141,11 +140,11 @@ public class WriteOptimizedGraphity extends Neo4jGraphity {
             StatusUpdate statusUpdate,
             Transaction tx) {
         // lock user
-        Lock lock = LockManager.lock(tx, author);
+        UserLock lock = LockManager.lock(author);
         try {
             return addStatusUpdate(author, statusUpdate);
         } finally {
-            lock.release();
+            LockManager.releaseLock(lock);
         }
     }
 

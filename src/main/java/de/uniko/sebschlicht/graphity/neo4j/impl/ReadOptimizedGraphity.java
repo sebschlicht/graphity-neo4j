@@ -7,7 +7,6 @@ import java.util.TreeSet;
 
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -52,9 +51,9 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             UserProxy following = loadUser(idFollowing);
             UserProxy followed = loadUser(idFollowed);
 
-            Lock[] locks = LockManager.lock(tx, following, followed);
+            UserLock lock = LockManager.lock(following, followed);
             boolean result = addFollowship(following, followed);
-            LockManager.releaseLocks(locks);
+            LockManager.releaseLock(lock);
 
             if (!result) {
                 return false;
@@ -171,9 +170,9 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 throw new UnknownFollowedIdException(sIdFollowed);
             }
 
-            Lock[] locks = LockManager.lock(tx, following, followed);
+            UserLock lock = LockManager.lock(following, followed);
             boolean result = removeFollowship(following, followed);
-            LockManager.releaseLocks(locks);
+            LockManager.releaseLock(lock);
 
             if (!result) {
                 return false;
@@ -259,11 +258,11 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
             replicaLayer.add(new UserProxy(following));
         }
-        List<Lock> locks = LockManager.lock(tx, replicaLayer);
+        UserLock lock = LockManager.lock(replicaLayer);
         try {
             return addStatusUpdate(author, statusUpdate);
         } finally {
-            LockManager.releaseLocks(locks);
+            LockManager.releaseLock(lock);
         }
     }
 
