@@ -5,6 +5,7 @@ import org.neo4j.graphdb.Node;
 
 import de.uniko.sebschlicht.graphity.neo4j.EdgeType;
 import de.uniko.sebschlicht.graphity.neo4j.Walker;
+import de.uniko.sebschlicht.graphity.neo4j.impl.LockableUser;
 
 /**
  * node proxy for an user that can act in the social network
@@ -12,7 +13,7 @@ import de.uniko.sebschlicht.graphity.neo4j.Walker;
  * @author sebschlicht
  * 
  */
-public class UserProxy extends SocialNodeProxy {
+public class UserProxy extends SocialNodeProxy implements LockableUser {
 
     /**
      * unique user identifier

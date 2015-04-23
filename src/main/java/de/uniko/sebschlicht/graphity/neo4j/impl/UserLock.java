@@ -3,23 +3,21 @@ package de.uniko.sebschlicht.graphity.neo4j.impl;
 import java.util.Set;
 import java.util.TreeSet;
 
-import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
-
 public class UserLock {
 
     protected Object _lock = new Object();
 
-    protected Set<UserProxy> _users;
+    protected Set<LockableUser> _users;
 
     public UserLock() {
         _users = new TreeSet<>(new LockUserComparator());
     }
 
-    public Set<UserProxy> getUsers() {
+    public Set<LockableUser> getUsers() {
         return _users;
     }
 
-    public void add(UserProxy user) {
+    public void add(LockableUser user) {
         _users.add(user);
     }
 

@@ -47,19 +47,20 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             throws IllegalUserIdException {
         long idFollowing = checkUserId(sIdFollowing);
         long idFollowed = checkUserId(sIdFollowed);
+        SimpleUser suFollowing = new SimpleUser(idFollowing);
+        SimpleUser suFollowed = new SimpleUser(idFollowed);
+        UserLock lock = LockManager.lock(suFollowing, suFollowed);
         try (Transaction tx = graphDb.beginTx()) {
             UserProxy following = loadUser(idFollowing);
             UserProxy followed = loadUser(idFollowed);
-
-            UserLock lock = LockManager.lock(following, followed);
             boolean result = addFollowship(following, followed);
-            LockManager.releaseLock(lock);
 
             if (!result) {
                 return false;
             }
             tx.success();
         }
+        LockManager.releaseLock(lock);
         addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
         //addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
         return true;
@@ -160,6 +161,9 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             UnknownFollowedIdException {
         long idFollowing = checkUserId(sIdFollowing);
         long idFollowed = checkUserId(sIdFollowed);
+        SimpleUser suFollowing = new SimpleUser(idFollowing);
+        SimpleUser suFollowed = new SimpleUser(idFollowed);
+        UserLock lock = LockManager.lock(suFollowing, suFollowed);
         try (Transaction tx = graphDb.beginTx()) {
             UserProxy following = findUser(idFollowing);
             if (following == null) {
@@ -170,15 +174,14 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 throw new UnknownFollowedIdException(sIdFollowed);
             }
 
-            UserLock lock = LockManager.lock(following, followed);
             boolean result = removeFollowship(following, followed);
-            LockManager.releaseLock(lock);
 
             if (!result) {
                 return false;
             }
             tx.success();
         }
+        LockManager.releaseLock(lock);
         addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
         //addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
         return true;
@@ -244,26 +247,47 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     }
 
     @Override
+    public long addStatusUpdate(String sIdAuthor, String message)
+            throws IllegalUserIdException {
+        long idAuthor = checkUserId(sIdAuthor);
+        List<UserProxy> replicaLayer = new LinkedList<>();
+
+        try (Transaction tx = graphDb.beginTx()) {
+            UserProxy author = loadUser(idAuthor);
+
+            // lock user and ego network
+            replicaLayer.add(author);
+            Node rFollowing, following;
+            for (Relationship followship : author.getNode().getRelationships(
+                    EdgeType.REPLICA, Direction.INCOMING)) {
+                rFollowing = followship.getStartNode();
+                following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
+                replicaLayer.add(new UserProxy(following));
+            }
+        }
+        StatusUpdate statusUpdate =
+                new StatusUpdate(sIdAuthor, System.currentTimeMillis(), message);
+        UserLock lock = LockManager.lock(replicaLayer);
+        try {
+            try (Transaction tx = graphDb.beginTx()) {
+                UserProxy author = loadUser(idAuthor);
+                long statusUpdateId = addStatusUpdate(author, statusUpdate, tx);
+                if (statusUpdateId != 0) {
+                    tx.success();
+                }
+                return statusUpdateId;
+            }
+        } finally {
+            LockManager.releaseLock(lock);
+        }
+    }
+
+    @Override
     protected long addStatusUpdate(
             UserProxy author,
             StatusUpdate statusUpdate,
             Transaction tx) {
-        // lock user and ego network
-        List<UserProxy> replicaLayer = new LinkedList<>();
-        replicaLayer.add(author);
-        Node rFollowing, following;
-        for (Relationship followship : author.getNode().getRelationships(
-                EdgeType.REPLICA, Direction.INCOMING)) {
-            rFollowing = followship.getStartNode();
-            following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
-            replicaLayer.add(new UserProxy(following));
-        }
-        UserLock lock = LockManager.lock(replicaLayer);
-        try {
-            return addStatusUpdate(author, statusUpdate);
-        } finally {
-            LockManager.releaseLock(lock);
-        }
+        return addStatusUpdate(author, statusUpdate);
     }
 
     @Override

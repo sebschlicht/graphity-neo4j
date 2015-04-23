@@ -24,14 +24,14 @@ public class LockManager {
         StringBuilder message = new StringBuilder();
         message.append(lock);
         message.append(": locking [");
-        for (UserProxy user : lock.getUsers()) {
+        for (LockableUser user : lock.getUsers()) {
             message.append(user.getIdentifier());
             message.append(",");
         }
         message.append("]");
         System.out.println(message.toString());
         try {
-            for (UserProxy user : lock.getUsers()) {
+            for (LockableUser user : lock.getUsers()) {
                 do {
                     prevLock = LOCKS.putIfAbsent(user.getIdentifier(), lock);
                     if (prevLock != null) {
@@ -88,7 +88,7 @@ public class LockManager {
      *            a second user
      * @return lock acquired for both users
      */
-    public static UserLock lock(UserProxy user1, UserProxy user2) {
+    public static UserLock lock(LockableUser user1, LockableUser user2) {
         // create lock container
         UserLock lock = getLock();
         lock.add(user1);
@@ -129,7 +129,7 @@ public class LockManager {
         StringBuilder message = new StringBuilder();
         message.append(lock);
         message.append(": [");
-        for (UserProxy user : lock.getUsers()) {
+        for (LockableUser user : lock.getUsers()) {
             LOCKS.remove(user.getIdentifier());
             message.append(user.getIdentifier());
             message.append(",");
