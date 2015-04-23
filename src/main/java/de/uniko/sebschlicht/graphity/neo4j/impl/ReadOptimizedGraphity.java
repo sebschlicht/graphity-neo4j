@@ -50,17 +50,20 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         SimpleUser suFollowing = new SimpleUser(idFollowing);
         SimpleUser suFollowed = new SimpleUser(idFollowed);
         UserLock lock = LockManager.lock(suFollowing, suFollowed);
-        try (Transaction tx = graphDb.beginTx()) {
-            UserProxy following = loadUser(idFollowing);
-            UserProxy followed = loadUser(idFollowed);
-            boolean result = addFollowship(following, followed);
+        try {
+            try (Transaction tx = graphDb.beginTx()) {
+                UserProxy following = loadUser(idFollowing);
+                UserProxy followed = loadUser(idFollowed);
+                boolean result = addFollowship(following, followed);
 
-            if (!result) {
-                return false;
+                if (!result) {
+                    return false;
+                }
+                tx.success();
             }
-            tx.success();
+        } finally {
+            LockManager.releaseLock(lock);
         }
-        LockManager.releaseLock(lock);
         addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
         //addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
         return true;
@@ -164,24 +167,27 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         SimpleUser suFollowing = new SimpleUser(idFollowing);
         SimpleUser suFollowed = new SimpleUser(idFollowed);
         UserLock lock = LockManager.lock(suFollowing, suFollowed);
-        try (Transaction tx = graphDb.beginTx()) {
-            UserProxy following = findUser(idFollowing);
-            if (following == null) {
-                throw new UnknownFollowingIdException(sIdFollowing);
-            }
-            UserProxy followed = findUser(idFollowed);
-            if (followed == null) {
-                throw new UnknownFollowedIdException(sIdFollowed);
-            }
+        try {
+            try (Transaction tx = graphDb.beginTx()) {
+                UserProxy following = findUser(idFollowing);
+                if (following == null) {
+                    throw new UnknownFollowingIdException(sIdFollowing);
+                }
+                UserProxy followed = findUser(idFollowed);
+                if (followed == null) {
+                    throw new UnknownFollowedIdException(sIdFollowed);
+                }
 
-            boolean result = removeFollowship(following, followed);
+                boolean result = removeFollowship(following, followed);
 
-            if (!result) {
-                return false;
+                if (!result) {
+                    return false;
+                }
+                tx.success();
             }
-            tx.success();
+        } finally {
+            LockManager.releaseLock(lock);
         }
-        LockManager.releaseLock(lock);
         addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
         //addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
         return true;
@@ -250,12 +256,13 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     public long addStatusUpdate(String sIdAuthor, String message)
             throws IllegalUserIdException {
         long idAuthor = checkUserId(sIdAuthor);
-        List<UserProxy> replicaLayer = new LinkedList<>();
+        UserLock lock;
 
         try (Transaction tx = graphDb.beginTx()) {
             UserProxy author = loadUser(idAuthor);
 
             // lock user and ego network
+            List<UserProxy> replicaLayer = new LinkedList<>();
             replicaLayer.add(author);
             Node rFollowing, following;
             for (Relationship followship : author.getNode().getRelationships(
@@ -264,10 +271,10 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
                 replicaLayer.add(new UserProxy(following));
             }
+            lock = LockManager.lock(replicaLayer);
         }
         StatusUpdate statusUpdate =
                 new StatusUpdate(sIdAuthor, System.currentTimeMillis(), message);
-        UserLock lock = LockManager.lock(replicaLayer);
         try {
             try (Transaction tx = graphDb.beginTx()) {
                 UserProxy author = loadUser(idAuthor);
