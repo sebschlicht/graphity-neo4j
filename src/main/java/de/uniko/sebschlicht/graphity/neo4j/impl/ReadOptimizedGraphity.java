@@ -59,11 +59,10 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             //LockManager.releaseLocks(locks);
 
             if (!result) {
-                System.out.println("rollback!");
+                System.err.println("rollback!");
                 return false;
             }
 
-            long timestamp = System.currentTimeMillis();
             //addStatusUpdate(following, new StatusUpdate(sIdFollowing,
             //        timestamp, "now follows " + sIdFollowed), tx);
 
@@ -91,8 +90,6 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         }
         following.getNode().createRelationshipTo(followed.getNode(),
                 EdgeType.FOLLOWS);
-        System.out.println(following.getNode() + " -> FOLLOWS -> "
-                + followed.getNode());
 
         // insert the followed user into the ego network of the subscriber
         insertIntoEgoNetwork(following, followed.getNode());
@@ -112,21 +109,6 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     protected void insertIntoEgoNetwork(UserProxy following, Node nFollowed) {
         RelationshipType graphity =
                 graphityIndexType(following.getIdentifier());
-        StringBuilder dm = new StringBuilder();
-        Node t = following.getNode();
-        dm.append("GRAPHITY:");
-        dm.append(following.getIdentifier());
-        dm.append(" ");
-        dm.append(t);
-        do {
-            t = Walker.nextNode(t, graphity);
-            if (t != null) {
-                dm.append(" -> ");
-                dm.append(t);
-            }
-        } while (t != null);
-        System.out.println("[before] " + dm);
-
         Node prev = following.getNode();
         Node next = null;
         long insertionTimestamp = getLastUpdate(nFollowed);
@@ -134,15 +116,12 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         do {
             next = Walker.nextNode(prev, graphity);
             if (next != null) {
-                System.out.println("compare user updates...");
                 timestamp = getLastUpdate(next);
                 if (timestamp > insertionTimestamp) {
-                    System.out.println(next + " is more recent.");
                     // current user has more recent news items, step on
                     prev = next;
                     continue;
                 }
-                System.out.println(nFollowed + " is as recent or higher!");
             }
             // no next user or less recent news items -> insertion position found
             break;
@@ -155,21 +134,6 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         }
         // connect the new user to the index head (subscriber or user with more recent news items)
         prev.createRelationshipTo(nFollowed, graphity);
-
-        dm = new StringBuilder();
-        t = following.getNode();
-        dm.append("GRAPHITY:");
-        dm.append(following.getIdentifier());
-        dm.append(" ");
-        dm.append(t);
-        do {
-            t = Walker.nextNode(t, graphity);
-            if (t != null) {
-                dm.append(" -> ");
-                dm.append(t);
-            }
-        } while (t != null);
-        System.out.println("[after] " + dm);
     }
 
     @Override
@@ -305,21 +269,6 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             graphity =
                     graphityIndexType(new UserProxy(nFollower).getIdentifier());
 
-            StringBuilder dm = new StringBuilder();
-            Node t = nFollower;
-            dm.append("GRAPHITY:");
-            dm.append(new UserProxy(nFollower).getIdentifier());
-            dm.append(" ");
-            dm.append(t);
-            do {
-                t = Walker.nextNode(t, graphity);
-                if (t != null) {
-                    dm.append(" -> ");
-                    dm.append(t);
-                }
-            } while (t != null);
-            System.out.println("[before] " + dm);
-
             // ensure author is head of followers Graphity index
             prev = Walker.previousNode(nAuthor, graphity);
             if (!prev.equals(nFollower)) {
@@ -341,21 +290,6 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 }
                 nAuthor.createRelationshipTo(lastRecent, graphity);
             }
-
-            dm = new StringBuilder();
-            t = nFollower;
-            dm.append("GRAPHITY:");
-            dm.append(new UserProxy(nFollower).getIdentifier());
-            dm.append(" ");
-            dm.append(t);
-            do {
-                t = Walker.nextNode(t, graphity);
-                if (t != null) {
-                    dm.append(" -> ");
-                    dm.append(t);
-                }
-            } while (t != null);
-            System.out.println("[after] " + dm);
         }
     }
 
@@ -447,7 +381,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     public static void main(String[] args) throws Exception {
         GraphDatabaseBuilder builder =
                 new GraphDatabaseFactory().newEmbeddedDatabaseBuilder(
-                        new File("/tmp/testdb").getAbsolutePath()).setConfig(
+                        new File("/tmp/rtestdb").getAbsolutePath()).setConfig(
                         GraphDatabaseSettings.cache_type, "none");
         GraphDatabaseService graphDb = builder.newGraphDatabase();
         Neo4jGraphity graphity = new ReadOptimizedGraphity(graphDb);
@@ -472,7 +406,7 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             System.out.println(graphity.removeFollowship("1", "2"));
             System.out.println(graphity.readStatusUpdates("1", 15));
             System.out.println("-------");
-            System.out.println(graphity.readStatusUpdates("2", 2));
+            System.out.println(graphity.readStatusUpdates("2", 15));
             System.out.println("-------");
             System.out.println(graphity.readStatusUpdates("2", 1));
             if (graphity.readStatusUpdates("3", 10).size() == 0) {

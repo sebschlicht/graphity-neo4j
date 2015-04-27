@@ -71,6 +71,15 @@ public class LockManager {
             userSet.add(user);
         }
 
+        StringBuilder dm = new StringBuilder();
+        dm.append("locking [");
+        for (UserProxy user : userSet) {
+            dm.append(",");
+            dm.append(user.getIdentifier());
+        }
+        dm.append("]");
+        System.out.println(dm);
+
         LinkedList<Lock> locks = new LinkedList<>();
         for (UserProxy user : userSet) {
             try {
