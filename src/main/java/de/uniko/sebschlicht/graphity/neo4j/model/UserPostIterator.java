@@ -9,8 +9,6 @@ public class UserPostIterator implements PostIterator {
 
     protected UserProxy pUser;
 
-    private Node _nReplica;
-
     protected StatusUpdateProxy pCrrStatusUpdate;
 
     public UserPostIterator(
@@ -21,14 +19,6 @@ public class UserPostIterator implements PostIterator {
 
     public UserProxy getUser() {
         return pUser;
-    }
-
-    public void setReplicaNode(Node nReplica) {
-        _nReplica = nReplica;
-    }
-
-    public Node getReplicaNode() {
-        return _nReplica;
     }
 
     protected static StatusUpdateProxy getLastUserPost(UserProxy pUser) {

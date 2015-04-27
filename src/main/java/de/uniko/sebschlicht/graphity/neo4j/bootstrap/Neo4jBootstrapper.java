@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.neo4j.graphdb.Label;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.unsafe.batchinsert.BatchInserter;
 import org.neo4j.unsafe.batchinsert.BatchInserters;
 
@@ -15,6 +16,7 @@ import de.uniko.sebschlicht.graphity.bootstrap.BootstrapClient;
 import de.uniko.sebschlicht.graphity.bootstrap.User;
 import de.uniko.sebschlicht.graphity.neo4j.EdgeType;
 import de.uniko.sebschlicht.graphity.neo4j.NodeType;
+import de.uniko.sebschlicht.graphity.neo4j.impl.ReadOptimizedGraphity;
 import de.uniko.sebschlicht.graphity.neo4j.model.StatusUpdateProxy;
 import de.uniko.sebschlicht.graphity.neo4j.model.UserProxy;
 
@@ -93,20 +95,18 @@ public class Neo4jBootstrapper extends BootstrapClient {
             } else {// ReadOptimizedGraphity
                 // link users and replica layer
                 long prev = user.getNodeId();
-                long[] replicas = user.getReplicas();
-                for (int i = 0; i < replicas.length; ++i) {
-                    // user -> FOLLOWS -> replica
-                    _inserter.createRelationship(user.getNodeId(), replicas[i],
-                            EdgeType.FOLLOWS, null);
-                    // replica -> REPLICA -> followed
-                    User followed = _users.getUser(subscriptions[i]);
-                    _inserter.createRelationship(replicas[i],
-                            followed.getNodeId(), EdgeType.REPLICA, null);
-                    // user/replica -> GRAPHITY -> replica
-                    _inserter.createRelationship(prev, replicas[i],
-                            EdgeType.GRAPHITY, null);
+                RelationshipType graphity =
+                        ReadOptimizedGraphity.graphityIndexType(user.getId());
+                for (long subscription : subscriptions) {
+                    User followed = _users.getUser(subscription);
+                    // user -> FOLLOWS -> user
+                    _inserter.createRelationship(user.getNodeId(),
+                            followed.getNodeId(), EdgeType.FOLLOWS, null);
+                    // subscriber/user -> GRAPHITY -> user
+                    _inserter.createRelationship(prev, followed.getNodeId(),
+                            graphity, null);
+                    prev = followed.getNodeId();
                     numSubscriptions += 1;
-                    prev = replicas[i];
                 }
             }
         }

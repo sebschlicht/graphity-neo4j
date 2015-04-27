@@ -241,6 +241,7 @@ public abstract class Neo4jGraphity extends Graphity {
             long statusUpdateId = addStatusUpdate(uAuthor, statusUpdate, tx);
             if (statusUpdateId != 0) {
                 tx.success();
+                System.out.println("commit.");
             }
             return statusUpdateId;
         }

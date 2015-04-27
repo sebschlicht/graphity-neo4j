@@ -6,10 +6,12 @@ import java.util.List;
 import java.util.TreeSet;
 
 import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.DynamicRelationshipType;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Lock;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.RelationshipType;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.factory.GraphDatabaseBuilder;
 import org.neo4j.graphdb.factory.GraphDatabaseFactory;
@@ -54,105 +56,120 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
             Lock[] locks = LockManager.lock(tx, following, followed);
             boolean result = addFollowship(following, followed);
-            LockManager.releaseLocks(locks);
+            //LockManager.releaseLocks(locks);
 
             if (!result) {
+                System.out.println("rollback!");
                 return false;
             }
+
+            long timestamp = System.currentTimeMillis();
+            //addStatusUpdate(following, new StatusUpdate(sIdFollowing,
+            //        timestamp, "now follows " + sIdFollowed), tx);
+
+            //addStatusUpdate(followed, new StatusUpdate(sIdFollowed, timestamp,
+            //        "has new follower " + sIdFollowing), tx);
             tx.success();
+            System.out.println("commit.");
         }
-        //addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
-        //addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
+        addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
+        addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
         return true;
     }
 
     @Override
     protected boolean addFollowship(UserProxy following, UserProxy followed) {
-        // try to find the replica node of the user followed
-        Node rFollowed = null;
+        // try to find the followed user
+        Node nFollowed = null;
         for (Relationship followship : following.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.OUTGOING)) {
-            rFollowed = followship.getEndNode();
-            if (Walker.nextNode(rFollowed, EdgeType.REPLICA).equals(
-                    followed.getNode())) {
+            nFollowed = followship.getEndNode();
+            if (followed.getNode().equals(nFollowed)) {
                 // user is following already
                 return false;
             }
         }
+        following.getNode().createRelationshipTo(followed.getNode(),
+                EdgeType.FOLLOWS);
+        System.out.println(following.getNode() + " -> FOLLOWS -> "
+                + followed.getNode());
 
-        // create replica
-        rFollowed = graphDb.createNode();
-        rFollowed.createRelationshipTo(followed.getNode(), EdgeType.REPLICA);
-        following.getNode().createRelationshipTo(rFollowed, EdgeType.FOLLOWS);
-
-        // insert the replica into the replica layer of the user following
-        insertIntoReplicaLayer(following.getNode(), rFollowed);
+        // insert the followed user into the ego network of the subscriber
+        insertIntoEgoNetwork(following, followed.getNode());
         return true;
     }
 
     /**
-     * Inserts a replica node in the replica layer of a user.<br>
-     * After the insertion the replica node will have the correct position in
-     * the replica layer of the user, according to the Graphity index.
+     * Inserts a user in the ego network of a subscribing user.<br>
+     * After the insertion the user node will have the correct position in
+     * the ego network of the user, according to the Graphity index.
      * 
      * @param nFollowing
-     *            user node
-     * @param rFollowed
-     *            replica node
+     *            subscriber node
+     * @param nFollowed
+     *            followed user node
      */
-    protected void insertIntoReplicaLayer(Node nFollowing, Node rFollowed) {
-        Node prev = nFollowing;
+    protected void insertIntoEgoNetwork(UserProxy following, Node nFollowed) {
+        RelationshipType graphity =
+                graphityIndexType(following.getIdentifier());
+        StringBuilder dm = new StringBuilder();
+        Node t = following.getNode();
+        dm.append("GRAPHITY:");
+        dm.append(following.getIdentifier());
+        dm.append(" ");
+        dm.append(t);
+        do {
+            t = Walker.nextNode(t, graphity);
+            if (t != null) {
+                dm.append(" -> ");
+                dm.append(t);
+            }
+        } while (t != null);
+        System.out.println("[before] " + dm);
+
+        Node prev = following.getNode();
         Node next = null;
-        long insertionTimestamp = getLastUpdateByReplica(rFollowed);
+        long insertionTimestamp = getLastUpdate(nFollowed);
         long timestamp;
         do {
-            next = Walker.nextNode(prev, EdgeType.GRAPHITY);
+            next = Walker.nextNode(prev, graphity);
             if (next != null) {
-                timestamp = getLastUpdateByReplica(next);
+                System.out.println("compare user updates...");
+                timestamp = getLastUpdate(next);
                 if (timestamp > insertionTimestamp) {
+                    System.out.println(next + " is more recent.");
                     // current user has more recent news items, step on
                     prev = next;
                     continue;
                 }
+                System.out.println(nFollowed + " is as recent or higher!");
             }
-            // no next replica or less recent news items -> insertion position found
+            // no next user or less recent news items -> insertion position found
             break;
         } while (next != null);
 
-        // if there is a tail, connect it to the new replica
+        // if there is a tail, connect it to the new user
         if (next != null) {
-            prev.getSingleRelationship(EdgeType.GRAPHITY, Direction.OUTGOING)
-                    .delete();
-            rFollowed.createRelationshipTo(next, EdgeType.GRAPHITY);
+            prev.getSingleRelationship(graphity, Direction.OUTGOING).delete();
+            nFollowed.createRelationshipTo(next, graphity);
         }
-        // connect the new replica to the index head (user or replica with more recent news items)
-        prev.createRelationshipTo(rFollowed, EdgeType.GRAPHITY);
-    }
+        // connect the new user to the index head (subscriber or user with more recent news items)
+        prev.createRelationshipTo(nFollowed, graphity);
 
-    /**
-     * remove a followed user from the replica layer
-     * 
-     * @param rFollowed
-     *            replica of the user that will be removed
-     */
-    private void removeFromReplicaLayer(final Node rFollowed) {
-        final Node prev = Walker.previousNode(rFollowed, EdgeType.GRAPHITY);
-        final Node next = Walker.nextNode(rFollowed, EdgeType.GRAPHITY);
-        // bridge the user replica in the replica layer
-        prev.getSingleRelationship(EdgeType.GRAPHITY, Direction.OUTGOING)
-                .delete();
-        if (next != null) {
-            next.getSingleRelationship(EdgeType.GRAPHITY, Direction.INCOMING)
-                    .delete();
-            prev.createRelationshipTo(next, EdgeType.GRAPHITY);
-        }
-        // remove the followship
-        rFollowed.getSingleRelationship(EdgeType.FOLLOWS, Direction.INCOMING)
-                .delete();
-        // remove the replica node itself
-        rFollowed.getSingleRelationship(EdgeType.REPLICA, Direction.OUTGOING)
-                .delete();
-        rFollowed.delete();
+        dm = new StringBuilder();
+        t = following.getNode();
+        dm.append("GRAPHITY:");
+        dm.append(following.getIdentifier());
+        dm.append(" ");
+        dm.append(t);
+        do {
+            t = Walker.nextNode(t, graphity);
+            if (t != null) {
+                dm.append(" -> ");
+                dm.append(t);
+            }
+        } while (t != null);
+        System.out.println("[after] " + dm);
     }
 
     @Override
@@ -173,74 +190,60 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
             Lock[] locks = LockManager.lock(tx, following, followed);
             boolean result = removeFollowship(following, followed);
-            LockManager.releaseLocks(locks);
+            //LockManager.releaseLocks(locks);
 
             if (!result) {
                 return false;
             }
             tx.success();
         }
-        //addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
-        //addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
+        addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
+        addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
         return true;
     }
 
     @Override
     protected boolean removeFollowship(UserProxy following, UserProxy followed) {
-        // find the replica node of the user followed
-        Node rFollowed = null;
-        for (Relationship followship : following.getNode().getRelationships(
-                EdgeType.FOLLOWS, Direction.OUTGOING)) {
-            rFollowed = followship.getEndNode();
-            if (Walker.nextNode(rFollowed, EdgeType.REPLICA).equals(
-                    followed.getNode())) {
+        // delete the followship if existing
+        Relationship followship = null;
+        for (Relationship follows : following.getNode().getRelationships(
+                Direction.OUTGOING, EdgeType.FOLLOWS)) {
+            if (follows.getEndNode().equals(followed.getNode())) {
+                followship = follows;
                 break;
             }
-            rFollowed = null;
         }
+
         // there is no such followship existing
-        if (rFollowed == null) {
+        if (followship == null) {
             return false;
         }
-        removeFromReplicaLayer(rFollowed);
+
+        // remove the followship
+        removeFromEgoNetwork(following, followed.getNode());
+        followship.delete();
         return true;
     }
 
     /**
-     * update the ego networks of a user's followers
+     * Removes a followed user from the ego network of a user.
      * 
-     * @param nUser
-     *            user where changes have occurred
+     * @param following
+     *            subscriber
+     * @param nFollowed
+     *            user node that will be removed from the Graphity index
      */
-    private void updateEgoNetworks(final Node nUser) {
-        Node rFollowed, following;
-        Node prev, next, last;
-        // loop through followers
-        for (Relationship relationship : nUser.getRelationships(
-                EdgeType.REPLICA, Direction.INCOMING)) {
-            // load each replica and the user corresponding
-            rFollowed = relationship.getStartNode();
-            following = Walker.previousNode(rFollowed, EdgeType.FOLLOWS);
-            // bridge user node
-            prev = Walker.previousNode(rFollowed, EdgeType.GRAPHITY);
-            if (!prev.equals(following)) {
-                rFollowed.getSingleRelationship(EdgeType.GRAPHITY,
-                        Direction.INCOMING).delete();
-                next = Walker.nextNode(rFollowed, EdgeType.GRAPHITY);
-                if (next != null) {
-                    rFollowed.getSingleRelationship(EdgeType.GRAPHITY,
-                            Direction.OUTGOING).delete();
-                    prev.createRelationshipTo(next, EdgeType.GRAPHITY);
-                }
-            }
-            // insert user's replica at its new position
-            last = Walker.nextNode(following, EdgeType.GRAPHITY);
-            if (!last.equals(rFollowed)) {
-                following.getSingleRelationship(EdgeType.GRAPHITY,
-                        Direction.OUTGOING).delete();
-                following.createRelationshipTo(rFollowed, EdgeType.GRAPHITY);
-                rFollowed.createRelationshipTo(last, EdgeType.GRAPHITY);
-            }
+    private void removeFromEgoNetwork(UserProxy following, Node nFollowed) {
+        RelationshipType graphity =
+                graphityIndexType(following.getIdentifier());
+
+        final Node prev = Walker.previousNode(nFollowed, graphity);
+        final Node next = Walker.nextNode(nFollowed, graphity);
+        // bridge the user node
+        prev.getSingleRelationship(graphity, Direction.OUTGOING).delete();
+        if (next != null) {
+            next.getSingleRelationship(graphity, Direction.INCOMING).delete();
+            prev.createRelationshipTo(next, graphity);
         }
     }
 
@@ -252,18 +255,17 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         // lock user and ego network
         List<UserProxy> replicaLayer = new LinkedList<>();
         replicaLayer.add(author);
-        Node rFollowing, following;
+        Node following;
         for (Relationship followship : author.getNode().getRelationships(
-                EdgeType.REPLICA, Direction.INCOMING)) {
-            rFollowing = followship.getStartNode();
-            following = Walker.previousNode(rFollowing, EdgeType.FOLLOWS);
+                EdgeType.FOLLOWS, Direction.INCOMING)) {
+            following = followship.getStartNode();
             replicaLayer.add(new UserProxy(following));
         }
         List<Lock> locks = LockManager.lock(tx, replicaLayer);
         try {
             return addStatusUpdate(author, statusUpdate);
         } finally {
-            LockManager.releaseLocks(locks);
+            //LockManager.releaseLocks(locks);
         }
     }
 
@@ -280,8 +282,81 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         author.addStatusUpdate(pStatusUpdate);
 
         // update ego networks of status update author followers
-        updateEgoNetworks(author.getNode());
+        updateEgoNetworks(author);
         return pStatusUpdate.getIdentifier();
+    }
+
+    /**
+     * update the ego networks of a user's followers
+     * 
+     * @param nUser
+     *            user where changes have occurred
+     */
+    private void updateEgoNetworks(final UserProxy user) {
+        Node nAuthor = user.getNode(), nFollower;
+        Node prev, next, lastRecent;
+        RelationshipType graphity;
+
+        // loop through followers
+        for (Relationship relationship : nAuthor.getRelationships(
+                EdgeType.FOLLOWS, Direction.INCOMING)) {
+            // load each follower
+            nFollower = relationship.getStartNode();
+            graphity =
+                    graphityIndexType(new UserProxy(nFollower).getIdentifier());
+
+            StringBuilder dm = new StringBuilder();
+            Node t = nFollower;
+            dm.append("GRAPHITY:");
+            dm.append(new UserProxy(nFollower).getIdentifier());
+            dm.append(" ");
+            dm.append(t);
+            do {
+                t = Walker.nextNode(t, graphity);
+                if (t != null) {
+                    dm.append(" -> ");
+                    dm.append(t);
+                }
+            } while (t != null);
+            System.out.println("[before] " + dm);
+
+            // ensure author is head of followers Graphity index
+            prev = Walker.previousNode(nAuthor, graphity);
+            if (!prev.equals(nFollower)) {
+                lastRecent = Walker.nextNode(nFollower, graphity);
+                next = Walker.nextNode(nAuthor, graphity);
+
+                // make author the head of the Graphity index
+                nFollower.getSingleRelationship(graphity, Direction.OUTGOING)
+                        .delete();
+                nAuthor.getSingleRelationship(graphity, Direction.INCOMING)
+                        .delete();
+                nFollower.createRelationshipTo(nAuthor, graphity);
+
+                // bridge author
+                if (next != null) {
+                    nAuthor.getSingleRelationship(graphity, Direction.OUTGOING)
+                            .delete();
+                    prev.createRelationshipTo(next, graphity);
+                }
+                nAuthor.createRelationshipTo(lastRecent, graphity);
+            }
+
+            dm = new StringBuilder();
+            t = nFollower;
+            dm.append("GRAPHITY:");
+            dm.append(new UserProxy(nFollower).getIdentifier());
+            dm.append(" ");
+            dm.append(t);
+            do {
+                t = Walker.nextNode(t, graphity);
+                if (t != null) {
+                    dm.append(" -> ");
+                    dm.append(t);
+                }
+            } while (t != null);
+            System.out.println("[after] " + dm);
+        }
     }
 
     @Override
@@ -291,16 +366,15 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         StatusUpdateList statusUpdates = new StatusUpdateList();
         final TreeSet<UserPostIterator> postIterators =
                 new TreeSet<UserPostIterator>(new PostIteratorComparator());
+        RelationshipType graphity = graphityIndexType(reader.getIdentifier());
 
-        // load first user by replica
+        // load first user
         UserProxy pCrrUser = null;
         UserPostIterator userPostIterator;
-        Node nReplica = Walker.nextNode(reader.getNode(), EdgeType.GRAPHITY);
-        if (nReplica != null) {
-            pCrrUser =
-                    new UserProxy(Walker.nextNode(nReplica, EdgeType.REPLICA));
+        Node nSubscribed = Walker.nextNode(reader.getNode(), graphity);
+        if (nSubscribed != null) {
+            pCrrUser = new UserProxy(nSubscribed);
             userPostIterator = new UserPostIterator(pCrrUser);
-            userPostIterator.setReplicaNode(nReplica);
 
             if (userPostIterator.hasNext()) {
                 postIterators.add(userPostIterator);
@@ -322,16 +396,13 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
 
             // load additional user if necessary
             if (userPostIterator.getUser() == pPrevUser) {
-                nReplica =
-                        Walker.nextNode(userPostIterator.getReplicaNode(),
-                                EdgeType.GRAPHITY);
+                nSubscribed =
+                        Walker.nextNode(userPostIterator.getUser().getNode(),
+                                graphity);
                 // check if additional user existing
-                if (nReplica != null) {
-                    pCrrUser =
-                            new UserProxy(Walker.nextNode(nReplica,
-                                    EdgeType.REPLICA));
+                if (nSubscribed != null) {
+                    pCrrUser = new UserProxy(nSubscribed);
                     userPostIterator = new UserPostIterator(pCrrUser);
-                    userPostIterator.setReplicaNode(nReplica);
                     // check if user has status updates
                     if (userPostIterator.hasNext()) {
                         postIterators.add(userPostIterator);
@@ -360,14 +431,17 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
      * Retrieves the timestamp of the last recent status update of the user
      * specified.
      * 
-     * @param userReplica
-     *            replica of the user
+     * @param nUser
+     *            user node
      * @return timestamp of the user's last recent status update
      */
-    private static long getLastUpdateByReplica(final Node userReplica) {
-        final Node user = Walker.nextNode(userReplica, EdgeType.REPLICA);
-        UserProxy pUser = new UserProxy(user);
-        return pUser.getLastPostTimestamp();
+    private static long getLastUpdate(final Node nUser) {
+        UserProxy user = new UserProxy(nUser);
+        return user.getLastPostTimestamp();
+    }
+
+    public static RelationshipType graphityIndexType(long id) {
+        return DynamicRelationshipType.withName("graphity:" + id);
     }
 
     public static void main(String[] args) throws Exception {

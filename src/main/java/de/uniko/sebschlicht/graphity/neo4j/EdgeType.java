@@ -18,15 +18,6 @@ public enum EdgeType implements RelationshipType {
     /**
      * news feed item published
      */
-    PUBLISHED,
+    PUBLISHED;
 
-    /**
-     * Graphity index spanning user's ego network
-     */
-    GRAPHITY,
-
-    /**
-     * replication nodes to overcome relationship type limitation
-     */
-    REPLICA;
 }
