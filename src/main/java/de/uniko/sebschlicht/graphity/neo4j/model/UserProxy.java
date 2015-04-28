@@ -138,4 +138,19 @@ public class UserProxy extends SocialNodeProxy {
         }
         return _lastPostTimestamp;
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null) {
+            return false;
+        }
+        if (o == this) {
+            return true;
+        }
+        if (!(o instanceof UserProxy)) {
+            return false;
+        }
+        UserProxy u = (UserProxy) o;
+        return getIdentifier() == u.getIdentifier();
+    }
 }

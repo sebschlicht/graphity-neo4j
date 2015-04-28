@@ -51,10 +51,24 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         long idFollowing = checkUserId(sIdFollowing);
         long idFollowed = checkUserId(sIdFollowed);
         try (Transaction tx = graphDb.beginTx()) {
+            List<UserProxy> lockable = new LinkedList<UserProxy>();
             UserProxy following = loadUser(idFollowing);
             UserProxy followed = loadUser(idFollowed);
+            lockable.add(following);
+            lockable.add(followed);
 
-            Lock[] locks = LockManager.lock(tx, following, followed);
+            Node[] futureNeighours =
+                    getFutureNeighbours(following, followed.getNode());
+            Node prev = futureNeighours[0], next = futureNeighours[1];
+            if (!followed.getNode().equals(prev)) {
+                lockable.add(new UserProxy(prev));
+            }
+            if (next != null) {
+                lockable.add(new UserProxy(next));
+            }
+
+            //Lock[] locks = LockManager.lock(tx, following, followed);
+            LockManager.lock(tx, lockable);
             boolean result = addFollowship(following, followed);
             //LockManager.releaseLocks(locks);
 
@@ -71,8 +85,8 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             tx.success();
             System.out.println("commit.");
         }
-        addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
-        addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
+        //addStatusUpdate(sIdFollowing, "now follows " + sIdFollowed);
+        //addStatusUpdate(sIdFollowed, "has new follower " + sIdFollowing);
         return true;
     }
 
@@ -109,9 +123,32 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
     protected void insertIntoEgoNetwork(UserProxy following, Node nFollowed) {
         RelationshipType graphity =
                 graphityIndexType(following.getIdentifier());
-        Node prev = following.getNode();
+        Node[] futureNeighours = getFutureNeighbours(following, nFollowed);
+        Node prev = futureNeighours[0], next = futureNeighours[1];
+
+        // if there is a tail, connect it to the new user
+        if (next != null) {
+            prev.getSingleRelationship(graphity, Direction.OUTGOING).delete();
+            nFollowed.createRelationshipTo(next, graphity);
+        }
+        // connect the new user to the index head (subscriber or user with more recent news items)
+        prev.createRelationshipTo(nFollowed, graphity);
+        //TODO we miss some locking!
+    }
+
+    /**
+     * 
+     * @param subscriber
+     * @param nUser
+     * @return node array <code>n</code> with previous (<code>n[0]</code>) and
+     *         next (<code>n[1]</code>) user vertex
+     */
+    protected Node[] getFutureNeighbours(UserProxy subscriber, Node nUser) {
+        RelationshipType graphity =
+                graphityIndexType(subscriber.getIdentifier());
+        Node prev = subscriber.getNode();
         Node next = null;
-        long insertionTimestamp = getLastUpdate(nFollowed);
+        long insertionTimestamp = getLastUpdate(nUser);
         long timestamp;
         do {
             next = Walker.nextNode(prev, graphity);
@@ -126,14 +163,9 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             // no next user or less recent news items -> insertion position found
             break;
         } while (next != null);
-
-        // if there is a tail, connect it to the new user
-        if (next != null) {
-            prev.getSingleRelationship(graphity, Direction.OUTGOING).delete();
-            nFollowed.createRelationshipTo(next, graphity);
-        }
-        // connect the new user to the index head (subscriber or user with more recent news items)
-        prev.createRelationshipTo(nFollowed, graphity);
+        return new Node[] {
+            prev, next
+        };
     }
 
     @Override
@@ -161,8 +193,8 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
             }
             tx.success();
         }
-        addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
-        addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
+        //addStatusUpdate(sIdFollowing, "did unfollow " + sIdFollowed);
+        //addStatusUpdate(sIdFollowed, "was unfollowed by " + sIdFollowing);
         return true;
     }
 
@@ -219,11 +251,29 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
         // lock user and ego network
         List<UserProxy> replicaLayer = new LinkedList<>();
         replicaLayer.add(author);
-        Node following;
+        Node nFollower;
+        UserProxy follower;
+        RelationshipType graphity;
+
         for (Relationship followship : author.getNode().getRelationships(
                 EdgeType.FOLLOWS, Direction.INCOMING)) {
-            following = followship.getStartNode();
-            replicaLayer.add(new UserProxy(following));
+            nFollower = followship.getStartNode();
+            follower = new UserProxy(nFollower);
+            replicaLayer.add(follower);
+            graphity = graphityIndexType(follower.getIdentifier());
+
+            // add last recent user
+            Node lastRecent = Walker.nextNode(nFollower, graphity);
+            if (!author.getNode().equals(lastRecent)) {
+                replicaLayer.add(new UserProxy(lastRecent));
+            }
+            // add prev and next user
+            Node prev = Walker.previousNode(author.getNode(), graphity);
+            replicaLayer.add(new UserProxy(prev));
+            Node next = Walker.nextNode(author.getNode(), graphity);
+            if (next != null) {
+                replicaLayer.add(new UserProxy(next));
+            }
         }
         List<Lock> locks = LockManager.lock(tx, replicaLayer);
         try {
@@ -276,9 +326,9 @@ public class ReadOptimizedGraphity extends Neo4jGraphity {
                 next = Walker.nextNode(nAuthor, graphity);
 
                 // make author the head of the Graphity index
-                nFollower.getSingleRelationship(graphity, Direction.OUTGOING)
-                        .delete();
                 nAuthor.getSingleRelationship(graphity, Direction.INCOMING)
+                        .delete();
+                nFollower.getSingleRelationship(graphity, Direction.OUTGOING)
                         .delete();
                 nFollower.createRelationshipTo(nAuthor, graphity);
 
